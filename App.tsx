@@ -256,9 +256,7 @@ const ExercisePicker: React.FC<{
   const [customName, setCustomName] = useState('');
   const [customMuscle, setCustomMuscle] = useState<MuscleGroup>('Chest');
 
-  if (!isOpen) return null;
-
-  // Group exercises by muscle
+  // Group exercises by muscle — MUST be before any conditional returns (React rules)
   const grouped = useMemo(() => {
     const groups: Record<string, Exercise[]> = {};
     exercises.forEach(ex => {
@@ -267,6 +265,8 @@ const ExercisePicker: React.FC<{
     });
     return groups;
   }, [exercises]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center">
@@ -354,6 +354,7 @@ const App: React.FC = () => {
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedExerciseDetail, setSelectedExerciseDetail] = useState<string | null>(null);
+  const [showFullCalendar, setShowFullCalendar] = useState(false);
 
   const [settings, setSettings] = useState({
     theme: 'dark' as 'light' | 'dark',
@@ -367,6 +368,24 @@ const App: React.FC = () => {
 
   const timerRef = useRef<any>(null);
   const stopwatchRef = useRef<any>(null);
+
+  // Exercise grouping — MUST be at top level (React rules), used by renderBody
+  const exerciseGrouped = useMemo(() => {
+    const groups: Record<string, Exercise[]> = {};
+    exercises.forEach(ex => {
+      if (!groups[ex.muscleGroup]) groups[ex.muscleGroup] = [];
+      groups[ex.muscleGroup].push(ex);
+    });
+    return groups;
+  }, [exercises]);
+
+  const exerciseGroupCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    exercises.forEach(ex => {
+      counts[ex.muscleGroup] = (counts[ex.muscleGroup] || 0) + 1;
+    });
+    return counts;
+  }, [exercises]);
 
   // Persistence
   useEffect(() => {
@@ -800,26 +819,8 @@ const App: React.FC = () => {
     </div>
   );
 
-  // BODY TAB (exercise library by muscle group)
+  // FUTURE: Body tab (exercise library + analytics) — disabled for now
   const renderBody = () => {
-    const grouped = useMemo(() => {
-      const groups: Record<string, Exercise[]> = {};
-      exercises.forEach(ex => {
-        if (!groups[ex.muscleGroup]) groups[ex.muscleGroup] = [];
-        groups[ex.muscleGroup].push(ex);
-      });
-      return groups;
-    }, [exercises]);
-
-    // Count exercises per group
-    const groupCounts = useMemo(() => {
-      const counts: Record<string, number> = {};
-      exercises.forEach(ex => {
-        counts[ex.muscleGroup] = (counts[ex.muscleGroup] || 0) + 1;
-      });
-      return counts;
-    }, [exercises]);
-
     return (
       <div className="h-full overflow-y-auto pb-20">
         <div className="p-4">
@@ -827,7 +828,7 @@ const App: React.FC = () => {
           <p className="text-xs text-zinc-500 mb-4">{exercises.length} total exercises</p>
           
           <div className="space-y-1">
-            {Object.entries(grouped).map(([muscle, exs]) => (
+            {Object.entries(exerciseGrouped).map(([muscle, exs]) => (
               <button
                 key={muscle}
                 onClick={() => setSelectedExerciseDetail(selectedExerciseDetail === muscle ? null : muscle)}
@@ -836,7 +837,7 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-zinc-200">{muscle}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-500">{groupCounts[muscle]}</span>
+                    <span className="text-xs text-zinc-500">{exerciseGroupCounts[muscle]}</span>
                     <ChevronDown size={14} className={`text-zinc-500 transition-transform ${selectedExerciseDetail === muscle ? 'rotate-180' : ''}`} />
                   </div>
                 </div>
@@ -867,7 +868,7 @@ const App: React.FC = () => {
     );
   };
 
-  // TODAY TAB (calendar + daily summary)
+  // TODAY TAB (weekly view + expand to calendar)
   const renderToday = () => {
     const today = new Date();
     const currentMonth = today.getMonth();
@@ -883,133 +884,245 @@ const App: React.FC = () => {
         .map(s => new Date(s.startTime).getDate())
     );
 
-    // Calendar
+    // Get workout dates for the week (for highlighting)
+    const workoutDates = new Set(
+      sessions.map(s => new Date(s.startTime).toDateString())
+    );
+
+    // Calculate current week (Sun-Sat)
+    const dayOfWeek = today.getDay(); // 0=Sun, 6=Sat
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - dayOfWeek);
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      weekDays.push(d);
+    }
+
+    // This week's stats
+    const weekSessions = sessions.filter(s => {
+      const d = new Date(s.startTime);
+      return d >= weekStart && d <= today;
+    });
+    const weekWorkouts = weekSessions.length;
+    const weekSets = weekSessions.reduce((acc, s) => acc + s.exercises.reduce((a, e) => a + e.sets.length, 0), 0);
+    const weekVolume = weekSessions.reduce((acc, s) => 
+      acc + s.exercises.reduce((a, e) => a + e.sets.reduce((sa, set) => sa + (set.weight * set.reps), 0), 0), 0
+    );
+
+    // Today's sessions
+    const todaySessions = sessions.filter(s => {
+      const d = new Date(s.startTime);
+      return d.toDateString() === today.toDateString();
+    });
+
+    // Full calendar data
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
     const calendarDays = [];
     for (let i = 0; i < firstDayOfMonth; i++) calendarDays.push(null);
     for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
-
     const monthName = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
     return (
       <div className="h-full overflow-y-auto pb-20">
         <div className="p-4">
-          <h2 className="text-lg font-bold text-zinc-100 mb-4">{monthName}</h2>
-          
-          {/* Calendar grid */}
-          <div className="bg-zinc-800/30 rounded-xl p-3 mb-4">
-            <div className="grid grid-cols-7 gap-1 text-center mb-2">
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                <span key={i} className="text-[10px] text-zinc-600 font-medium">{d}</span>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center">
-              {calendarDays.map((day, i) => (
-                <div 
-                  key={i} 
-                  className={`w-9 h-9 flex items-center justify-center rounded-full text-xs font-medium ${
-                    day === null 
-                      ? '' 
-                      : day === today.getDate()
-                        ? 'bg-emerald-500 text-white'
-                        : workoutDays.has(day)
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : 'text-zinc-400 hover:bg-zinc-700/50'
-                  }`}
-                >
-                  {day}
-                </div>
-              ))}
-            </div>
+          {/* Header with calendar toggle */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-zinc-100">
+              {showFullCalendar ? monthName : 'This Week'}
+            </h2>
+            <button 
+              onClick={() => setShowFullCalendar(!showFullCalendar)}
+              className={`p-2 rounded-lg transition-all ${showFullCalendar ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800/50 text-zinc-400 hover:text-zinc-200'}`}
+            >
+              <Calendar size={16} />
+            </button>
           </div>
 
-          {/* Today's stats if there's a session */}
-          {sessions.filter(s => {
-            const d = new Date(s.startTime);
-            return d.getDate() === today.getDate() && 
-                   d.getMonth() === today.getMonth() && 
-                   d.getFullYear() === today.getFullYear();
-          }).map(s => {
-            const totalVolume = s.exercises.reduce((acc, ex) => 
-              acc + ex.sets.reduce((setAcc, set) => setAcc + (set.weight * set.reps), 0), 0
-            );
-            const totalSets = s.exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
-            const totalReps = s.exercises.reduce((acc, ex) => 
-              acc + ex.sets.reduce((setAcc, set) => setAcc + set.reps, 0), 0
-            );
-
-            return (
-              <div key={s.id} className="bg-zinc-800/30 rounded-xl p-4 space-y-3">
-                <h3 className="font-semibold text-sm text-zinc-100">{s.name}</h3>
-                
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-red-400">{totalSets}</div>
-                    <div className="text-[9px] text-zinc-500 uppercase">Sets</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-emerald-400">{totalReps}</div>
-                    <div className="text-[9px] text-zinc-500 uppercase">Reps</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-cyan-400">{totalVolume.toLocaleString()}</div>
-                    <div className="text-[9px] text-zinc-500 uppercase">Volume</div>
-                  </div>
+          {/* Weekly View (default) */}
+          {!showFullCalendar && (
+            <>
+              {/* Week strip */}
+              <div className="bg-zinc-800/30 rounded-xl p-3 mb-4">
+                <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                    <span key={i} className="text-[10px] text-zinc-600 font-medium">{d}</span>
+                  ))}
                 </div>
-
-                <div className="space-y-1">
-                  {s.exercises.map(ex => {
-                    const info = exercises.find(e => e.id === ex.exerciseId);
+                <div className="grid grid-cols-7 gap-1 text-center">
+                  {weekDays.map((d, i) => {
+                    const isToday = d.toDateString() === today.toDateString();
+                    const hasWorkout = workoutDates.has(d.toDateString());
                     return (
-                      <div key={ex.exerciseId} className="flex items-center justify-between py-1 px-2 rounded-lg bg-zinc-700/20">
-                        <span className="text-xs text-zinc-300">{info?.name}</span>
-                        <span className="text-[10px] text-zinc-500">{ex.sets.length} sets</span>
+                      <div 
+                        key={i} 
+                        className={`h-9 flex items-center justify-center rounded-full text-xs font-medium ${
+                          isToday
+                            ? 'bg-emerald-500 text-white'
+                            : hasWorkout
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'text-zinc-400'
+                        }`}
+                      >
+                        {d.getDate()}
                       </div>
                     );
                   })}
                 </div>
               </div>
-            );
-          })}
 
-          {/* Monthly summary */}
-          <div className="mt-4 bg-zinc-800/30 rounded-xl p-4">
-            <h3 className="text-xs text-zinc-500 uppercase font-semibold mb-3">This Month</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-2xl font-bold text-zinc-100">{workoutDays.size}</div>
-                <div className="text-[10px] text-zinc-500">Workouts</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-zinc-100">
-                  {sessions
-                    .filter(s => {
-                      const d = new Date(s.startTime);
-                      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-                    })
-                    .reduce((acc, s) => acc + s.exercises.reduce((a, e) => a + e.sets.length, 0), 0)
-                  }
+              {/* Today's sessions */}
+              {todaySessions.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs text-zinc-500 uppercase font-semibold mb-2">Today</h3>
+                  {todaySessions.map(s => {
+                    const totalVolume = s.exercises.reduce((acc, ex) => 
+                      acc + ex.sets.reduce((setAcc, set) => setAcc + (set.weight * set.reps), 0), 0
+                    );
+                    const totalSets = s.exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
+                    const totalReps = s.exercises.reduce((acc, ex) => 
+                      acc + ex.sets.reduce((setAcc, set) => setAcc + set.reps, 0), 0
+                    );
+
+                    return (
+                      <div key={s.id} className="bg-zinc-800/30 rounded-xl p-3 space-y-2 mb-2">
+                        <h4 className="font-semibold text-sm text-zinc-100">{s.name}</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="text-center">
+                            <div className="text-base font-bold text-red-400">{totalSets}</div>
+                            <div className="text-[9px] text-zinc-500 uppercase">Sets</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-base font-bold text-emerald-400">{totalReps}</div>
+                            <div className="text-[9px] text-zinc-500 uppercase">Reps</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-base font-bold text-cyan-400">{totalVolume.toLocaleString()}</div>
+                            <div className="text-[9px] text-zinc-500 uppercase">Vol</div>
+                          </div>
+                        </div>
+                        <div className="space-y-0.5">
+                          {s.exercises.map(ex => {
+                            const info = exercises.find(e => e.id === ex.exerciseId);
+                            return (
+                              <div key={ex.exerciseId} className="flex items-center justify-between py-1 px-2 rounded-lg bg-zinc-700/20">
+                                <span className="text-xs text-zinc-300">{info?.name}</span>
+                                <span className="text-[10px] text-zinc-500">{ex.sets.length} sets</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="text-[10px] text-zinc-500">Total Sets</div>
+              )}
+
+              {/* This week summary */}
+              <div className="bg-zinc-800/30 rounded-xl p-3">
+                <h3 className="text-xs text-zinc-500 uppercase font-semibold mb-2">This Week</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-zinc-100">{weekWorkouts}</div>
+                    <div className="text-[9px] text-zinc-500 uppercase">Workouts</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-zinc-100">{weekSets}</div>
+                    <div className="text-[9px] text-zinc-500 uppercase">Sets</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-emerald-400">{weekVolume.toLocaleString()}</div>
+                    <div className="text-[9px] text-zinc-500 uppercase">Volume</div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
+
+          {/* Full Calendar View (expanded) */}
+          {showFullCalendar && (
+            <>
+              <div className="bg-zinc-800/30 rounded-xl p-3 mb-4">
+                <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                    <span key={i} className="text-[10px] text-zinc-600 font-medium">{d}</span>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1 text-center">
+                  {calendarDays.map((day, i) => (
+                    <div 
+                      key={i} 
+                      className={`h-9 flex items-center justify-center rounded-full text-xs font-medium ${
+                        day === null 
+                          ? '' 
+                          : day === today.getDate()
+                            ? 'bg-emerald-500 text-white'
+                            : workoutDays.has(day)
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'text-zinc-400 hover:bg-zinc-700/50'
+                      }`}
+                    >
+                      {day}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Monthly summary */}
+              <div className="bg-zinc-800/30 rounded-xl p-4">
+                <h3 className="text-xs text-zinc-500 uppercase font-semibold mb-3">This Month</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-2xl font-bold text-zinc-100">{workoutDays.size}</div>
+                    <div className="text-[10px] text-zinc-500">Workouts</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-zinc-100">
+                      {sessions
+                        .filter(s => {
+                          const d = new Date(s.startTime);
+                          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                        })
+                        .reduce((acc, s) => acc + s.exercises.reduce((a, e) => a + e.sets.length, 0), 0)
+                      }
+                    </div>
+                    <div className="text-[10px] text-zinc-500">Total Sets</div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
+  };
+
+  // Logo navigation: active workout → go to sets, else → home. If already on sets with workout → go back to My Workouts
+  const handleLogoClick = () => {
+    if (activeTab === 'sets' && currentSession) {
+      // Already viewing workout, go back to My Workouts
+      setCurrentSession(null);
+    } else if (currentSession) {
+      // Has active workout, navigate to it
+      setActiveTab('sets');
+    } else {
+      // No active workout, go home
+      setActiveTab('sets');
+    }
   };
 
   return (
     <div className={`flex flex-col h-screen ${settings.theme === 'dark' ? 'bg-zinc-950' : 'bg-white'} text-zinc-100 max-w-md mx-auto relative overflow-hidden font-inter`}>
       {/* Header */}
       <header className={`px-4 py-3 flex items-center justify-between ${settings.theme === 'dark' ? 'bg-zinc-950' : 'bg-white'} border-b border-zinc-800/50 shrink-0`}>
-        <div className="flex items-center gap-2">
+        <button onClick={handleLogoClick} className="flex items-center gap-2 active:opacity-70 transition-opacity">
           <div className={`w-7 h-7 bg-${settings.accent}-500 rounded-lg flex items-center justify-center`}>
             <Zap size={14} className="text-white" fill="currentColor" />
           </div>
           <h1 className="text-base font-bold text-zinc-100 uppercase tracking-tight">Vibe<span className={`text-${settings.accent}-500`}>Set</span></h1>
-        </div>
+        </button>
         <button 
           onClick={() => setIsSettingsOpen(true)}
           className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded-lg transition-all"
@@ -1022,7 +1135,6 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-hidden">
         {activeTab === 'sets' && renderSets()}
         {activeTab === 'sessions' && renderSessions()}
-        {activeTab === 'body' && renderBody()}
         {activeTab === 'today' && renderToday()}
       </main>
 
@@ -1046,28 +1158,21 @@ const App: React.FC = () => {
       {/* Bottom Navigation */}
       <nav className={`${settings.theme === 'dark' ? 'bg-zinc-950/95' : 'bg-white/95'} backdrop-blur-xl border-t border-zinc-800/50 flex justify-around items-center py-1 shrink-0`}>
         <NavItem 
-          icon={<List size={18} />} 
+          icon={<List size={20} />} 
           label="Sets" 
           active={activeTab === 'sets'} 
           accent={settings.accent} 
           onClick={() => setActiveTab('sets')} 
         />
         <NavItem 
-          icon={<History size={18} />} 
+          icon={<History size={20} />} 
           label="Sessions" 
           active={activeTab === 'sessions'} 
           accent={settings.accent} 
           onClick={() => setActiveTab('sessions')} 
         />
         <NavItem 
-          icon={<User size={18} />} 
-          label="Body" 
-          active={activeTab === 'body'} 
-          accent={settings.accent} 
-          onClick={() => setActiveTab('body')} 
-        />
-        <NavItem 
-          icon={<Calendar size={18} />} 
+          icon={<Calendar size={20} />} 
           label="Today" 
           active={activeTab === 'today'} 
           accent={settings.accent} 
