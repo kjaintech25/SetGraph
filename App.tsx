@@ -86,12 +86,20 @@ const SetRow: React.FC<{
   index: number; 
   units: 'kg' | 'lb';
   prevSet?: WorkoutSet;
+  isLast: boolean;
   onDelete: (id: string) => void;
   onUpdate: (id: string, weight: number, reps: number, rpe: number) => void;
   onRepeat: (set: WorkoutSet) => void;
-}> = ({ set, index, units, prevSet, onDelete, onUpdate, onRepeat }) => {
+  onAddSet: () => void;
+}> = ({ set, index, units, prevSet, isLast, onDelete, onUpdate, onRepeat, onAddSet }) => {
   const weightDiff = prevSet ? set.weight - prevSet.weight : null;
   const repsDiff = prevSet ? set.reps - prevSet.reps : null;
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && set.weight > 0 && set.reps > 0) {
+      onAddSet();
+    }
+  };
 
   return (
     <div className="flex items-center gap-2 py-1.5 px-2 group">
@@ -104,6 +112,7 @@ const SetRow: React.FC<{
           value={set.weight || ''} 
           placeholder="0"
           onChange={(e) => onUpdate(set.id, parseFloat(e.target.value) || 0, set.reps, set.rpe)}
+          onKeyDown={handleKeyDown}
         />
         <span className="text-[10px] text-zinc-600 w-4">{units}</span>
         
@@ -115,6 +124,7 @@ const SetRow: React.FC<{
           value={set.reps || ''} 
           placeholder="0"
           onChange={(e) => onUpdate(set.id, set.weight, parseInt(e.target.value) || 0, set.rpe)}
+          onKeyDown={handleKeyDown}
         />
         
         {set.isPB && <Trophy size={12} className="text-yellow-500 ml-1" />}
@@ -123,6 +133,15 @@ const SetRow: React.FC<{
           <span className={`text-[10px] ml-1 font-medium ${weightDiff && weightDiff > 0 ? 'text-emerald-400' : weightDiff && weightDiff < 0 ? 'text-red-400' : 'text-zinc-600'}`}>
             {weightDiff && weightDiff > 0 ? '+' : ''}{weightDiff}{units} {repsDiff && repsDiff > 0 ? '+' : ''}{repsDiff}r
           </span>
+        )}
+
+        {isLast && set.weight > 0 && set.reps > 0 && (
+          <button 
+            onClick={onAddSet}
+            className="ml-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-semibold hover:bg-emerald-500/30 transition-all"
+          >
+            +Set
+          </button>
         )}
       </div>
       
@@ -421,6 +440,8 @@ const App: React.FC = () => {
     if (savedSettings) setSettings(prev => ({ ...prev, ...JSON.parse(savedSettings) }));
     const savedCustomExercises = localStorage.getItem('vibeset_custom_exercises');
     if (savedCustomExercises) setExercises([...EXERCISE_LIBRARY, ...JSON.parse(savedCustomExercises)]);
+    const savedCurrentSession = localStorage.getItem('vibeset_current_session');
+    if (savedCurrentSession) setCurrentSession(JSON.parse(savedCurrentSession));
   }, []);
 
   useEffect(() => {
@@ -433,6 +454,13 @@ const App: React.FC = () => {
     localStorage.setItem('vibeset_settings', JSON.stringify(settings));
     document.documentElement.classList.toggle('dark', settings.theme === 'dark');
   }, [settings]);
+  useEffect(() => {
+    if (currentSession) {
+      localStorage.setItem('vibeset_current_session', JSON.stringify(currentSession));
+    } else {
+      localStorage.removeItem('vibeset_current_session');
+    }
+  }, [currentSession]);
 
   // Timer
   useEffect(() => {
@@ -520,6 +548,7 @@ const App: React.FC = () => {
         e.exerciseId === exerciseId ? { ...e, sets: [...e.sets, newSet] } : e
       )
     });
+    triggerTimer();
   };
 
   const updateSet = (exerciseId: string, setId: string, weight: number, reps: number, rpe: number) => {
@@ -539,6 +568,7 @@ const App: React.FC = () => {
         } : e
       )
     });
+    if (weight > 0 && reps > 0) triggerTimer();
   };
 
   const deleteSet = (exerciseId: string, setId: string) => {
@@ -779,9 +809,11 @@ const App: React.FC = () => {
                       index={idx} 
                       units={settings.units}
                       prevSet={prevSets?.[idx]}
+                      isLast={idx === log.sets.length - 1}
                       onDelete={(id) => deleteSet(log.exerciseId, id)}
                       onUpdate={(id, w, r, rp) => updateSet(log.exerciseId, id, w, r, rp)}
                       onRepeat={(s) => repeatSet(log.exerciseId, s)}
+                      onAddSet={() => addSetToExercise(log.exerciseId)}
                     />
                   ))}
                 </div>
