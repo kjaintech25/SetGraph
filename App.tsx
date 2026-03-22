@@ -273,11 +273,12 @@ const ExercisePicker: React.FC<{
   isBuildingPlan?: boolean;
   planExerciseIds?: string[];
   onTogglePlanExercise?: (exerciseId: string) => void;
-  onSavePlan?: () => void;
+  onSavePlan?: (name: string) => void;
 }> = ({ isOpen, onClose, exercises, accent, onSelect, onAddCustom, isBuildingPlan, planExerciseIds, onTogglePlanExercise, onSavePlan }) => {
   const [showCustom, setShowCustom] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customMuscle, setCustomMuscle] = useState<MuscleGroup>('Chest');
+  const [planName, setPlanName] = useState('');
 
   // Group exercises by muscle — MUST be before any conditional returns (React rules)
   const grouped = useMemo(() => {
@@ -294,24 +295,35 @@ const ExercisePicker: React.FC<{
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center">
       <div className="bg-zinc-900 w-full max-w-md rounded-t-3xl h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-2xl">
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="font-bold text-zinc-100">{isBuildingPlan ? 'Build Plan' : 'Exercises'}</h3>
-            {isBuildingPlan && planExerciseIds && (
-              <span className="text-[10px] text-zinc-500">{planExerciseIds.length} selected</span>
-            )}
+        <div className="p-4 border-b border-zinc-800 shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="font-bold text-zinc-100">{isBuildingPlan ? 'Build Plan' : 'Exercises'}</h3>
+              {isBuildingPlan && planExerciseIds && (
+                <span className="text-[10px] text-zinc-500">{planExerciseIds.length} exercises selected</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowCustom(!showCustom)}
+                className={`p-2 rounded-xl transition-all ${showCustom ? `bg-${accent}-500/20 text-${accent}-400` : 'bg-zinc-800 text-zinc-400'}`}
+              >
+                <PlusCircle size={18} />
+              </button>
+              <button onClick={onClose} className="p-2 bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-colors">
+                <X size={18}/>
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setShowCustom(!showCustom)}
-              className={`p-2 rounded-xl transition-all ${showCustom ? `bg-${accent}-500/20 text-${accent}-400` : 'bg-zinc-800 text-zinc-400'}`}
-            >
-              <PlusCircle size={18} />
-            </button>
-            <button onClick={onClose} className="p-2 bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-colors">
-              <X size={18}/>
-            </button>
-          </div>
+          {/* Plan name input when building */}
+          {isBuildingPlan && (
+            <input 
+              className="w-full bg-zinc-800 px-3 py-2 rounded-xl text-sm text-zinc-100 outline-none placeholder-zinc-500 focus:ring-1 focus:ring-emerald-500/50"
+              placeholder="Name your plan..."
+              value={planName}
+              onChange={e => setPlanName(e.target.value)}
+            />
+          )}
         </div>
 
         {showCustom && (
@@ -622,13 +634,13 @@ const App: React.FC = () => {
     setTemplates([...templates, { id: Date.now().toString(), name, exerciseIds: currentSession.exercises.map(e => e.exerciseId) }]);
   };
 
-  const savePlanAsTemplate = () => {
-    if (planExerciseIds.length === 0) return;
-    const name = prompt("Plan name:");
-    if (!name) return;
-    setTemplates([...templates, { id: Date.now().toString(), name, exerciseIds: [...planExerciseIds] }]);
+  const savePlanAsTemplate = (name: string) => {
+    if (planExerciseIds.length === 0 || !name.trim()) return;
+    setTemplates([...templates, { id: Date.now().toString(), name: name.trim(), exerciseIds: [...planExerciseIds] }]);
     setPlanExerciseIds([]);
     setIsBuildingPlan(false);
+    setIsExercisePickerOpen(false);
+  };
   };
 
   // --- Renders ---
@@ -667,19 +679,35 @@ const App: React.FC = () => {
               <div className="pt-4 space-y-1">
                 <p className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider px-1">My Plans</p>
                 {templates.map(t => (
-                  <div key={t.id} className="flex items-center gap-2">
+                  <div key={t.id} className="bg-zinc-800/50 rounded-xl p-3 group">
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-medium text-sm text-zinc-200">{t.name}</h4>
+                      <button 
+                        onClick={() => setTemplates(templates.filter(temp => temp.id !== t.id))}
+                        className="p-1 text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {t.exerciseIds.slice(0, 3).map(eid => {
+                        const ex = exercises.find(e => e.id === eid);
+                        return (
+                          <span key={eid} className="text-[9px] bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">
+                            {ex?.name}
+                          </span>
+                        );
+                      })}
+                      {t.exerciseIds.length > 3 && (
+                        <span className="text-[9px] text-zinc-500">+{t.exerciseIds.length - 3}</span>
+                      )}
+                    </div>
                     <button 
                       onClick={() => startWorkout(t)}
-                      className="flex-1 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 font-medium py-2.5 px-4 rounded-xl flex items-center justify-between transition-all text-sm"
+                      className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-semibold py-2 rounded-lg transition-all flex items-center justify-center gap-1"
                     >
-                      <span>{t.name}</span>
-                      <span className="text-[10px] text-zinc-500">{t.exerciseIds.length} ex</span>
-                    </button>
-                    <button 
-                      onClick={() => setTemplates(templates.filter(temp => temp.id !== t.id))}
-                      className="p-2 text-zinc-600 hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 size={14} />
+                      <Play size={12} />
+                      Start
                     </button>
                   </div>
                 ))}
@@ -964,14 +992,14 @@ const App: React.FC = () => {
         </div>
 
         {/* Save Plan button when building */}
-        {isBuildingPlan && planExerciseIds && planExerciseIds.length > 0 && (
+        {isBuildingPlan && planExerciseIds && planExerciseIds.length > 0 && planName.trim() && (
           <div className="p-3 border-t border-zinc-800 shrink-0">
             <button 
-              onClick={onSavePlan}
+              onClick={() => onSavePlan?.(planName.trim())}
               className={`w-full bg-${accent}-500 hover:bg-${accent}-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-all`}
             >
               <Save size={16} />
-              Save Plan ({planExerciseIds.length} exercises)
+              Save "{planName.trim()}"
             </button>
           </div>
         )}
