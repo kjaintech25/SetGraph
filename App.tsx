@@ -22,7 +22,13 @@ import {
   Scale,
   PlusCircle,
   Check,
-  RotateCcw
+  RotateCcw,
+  Repeat,
+  List,
+  Calendar,
+  User,
+  ChevronDown,
+  Minus
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -43,26 +49,21 @@ import {
 } from './types';
 import { EXERCISE_LIBRARY, ACCENT_COLORS } from './constants';
 
-// --- Utility: Format Time ---
+// --- Utility ---
 const formatTime = (seconds: number) => {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return [h, m, s]
-    .map(v => v < 10 ? "0" + v : v)
-    .filter((v, i) => v !== "00" || i > 0)
-    .join(":");
-};
-
-// Simplified format for short durations (M:SS)
-const formatShortDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-// --- Helper Components ---
+const formatDuration = (seconds: number) => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+};
 
+// --- Nav Item ---
 const NavItem: React.FC<{ 
   icon: React.ReactNode; 
   label: string; 
@@ -72,67 +73,79 @@ const NavItem: React.FC<{
 }> = ({ icon, label, active, accent, onClick }) => (
   <button 
     onClick={onClick}
-    className={`flex flex-col items-center justify-center space-y-1 transition-all duration-300 ${active ? `text-${accent}-500 scale-110 font-bold` : 'text-zinc-500 hover:text-zinc-300'}`}
+    className={`flex flex-col items-center justify-center gap-0.5 py-2 px-3 transition-all ${active ? `text-${accent}-500` : 'text-zinc-500'}`}
   >
     {icon}
-    <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+    <span className="text-[9px] font-semibold uppercase tracking-wider">{label}</span>
   </button>
 );
 
+// --- Compact Set Row ---
 const SetRow: React.FC<{ 
   set: WorkoutSet; 
   index: number; 
   units: 'kg' | 'lb';
+  prevSet?: WorkoutSet;
   onDelete: (id: string) => void;
   onUpdate: (id: string, weight: number, reps: number, rpe: number) => void;
-  onDuplicate: (set: WorkoutSet) => void;
-}> = ({ set, index, units, onDelete, onUpdate, onDuplicate }) => {
+  onRepeat: (set: WorkoutSet) => void;
+}> = ({ set, index, units, prevSet, onDelete, onUpdate, onRepeat }) => {
+  const weightDiff = prevSet ? set.weight - prevSet.weight : null;
+  const repsDiff = prevSet ? set.reps - prevSet.reps : null;
+
   return (
-    <div className="grid grid-cols-6 gap-2 items-center py-2 px-3 bg-zinc-800/50 dark:bg-zinc-800/50 rounded-lg mb-2 group transition-colors">
-      <div className="text-xs font-bold text-zinc-500 flex items-center">
-        {index + 1}
-        {set.isPB && <Trophy size={10} className="ml-1 text-yellow-500" />}
+    <div className="flex items-center gap-2 py-1.5 px-2 group">
+      <span className="text-xs text-zinc-500 w-5 font-medium">{index + 1}</span>
+      
+      <div className="flex-1 flex items-center gap-1.5">
+        <input 
+          type="number" 
+          className="w-16 bg-zinc-800 rounded-lg px-2 py-1.5 text-center text-sm font-semibold text-zinc-100 outline-none focus:ring-1 focus:ring-emerald-500/50 border-0"
+          value={set.weight || ''} 
+          placeholder="0"
+          onChange={(e) => onUpdate(set.id, parseFloat(e.target.value) || 0, set.reps, set.rpe)}
+        />
+        <span className="text-[10px] text-zinc-600 w-4">{units}</span>
+        
+        <span className="text-zinc-700 mx-0.5">×</span>
+        
+        <input 
+          type="number" 
+          className="w-14 bg-zinc-800 rounded-lg px-2 py-1.5 text-center text-sm font-semibold text-zinc-100 outline-none focus:ring-1 focus:ring-emerald-500/50 border-0"
+          value={set.reps || ''} 
+          placeholder="0"
+          onChange={(e) => onUpdate(set.id, set.weight, parseInt(e.target.value) || 0, set.rpe)}
+        />
+        
+        {set.isPB && <Trophy size={12} className="text-yellow-500 ml-1" />}
+        
+        {(weightDiff !== null || repsDiff !== null) && set.weight > 0 && set.reps > 0 && (
+          <span className={`text-[10px] ml-1 font-medium ${weightDiff && weightDiff > 0 ? 'text-emerald-400' : weightDiff && weightDiff < 0 ? 'text-red-400' : 'text-zinc-600'}`}>
+            {weightDiff && weightDiff > 0 ? '+' : ''}{weightDiff}{units} {repsDiff && repsDiff > 0 ? '+' : ''}{repsDiff}r
+          </span>
+        )}
       </div>
-      <input 
-        type="number" 
-        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-1 text-center text-sm w-full outline-none focus:ring-1 focus:ring-emerald-500 text-zinc-900 dark:text-zinc-100" 
-        value={set.weight || ''} 
-        placeholder={units}
-        onChange={(e) => onUpdate(set.id, parseFloat(e.target.value) || 0, set.reps, set.rpe)}
-      />
-      <input 
-        type="number" 
-        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-1 text-center text-sm w-full outline-none focus:ring-1 focus:ring-emerald-500 text-zinc-900 dark:text-zinc-100" 
-        value={set.reps || ''} 
-        placeholder="reps"
-        onChange={(e) => onUpdate(set.id, set.weight, parseInt(e.target.value) || 0, set.rpe)}
-      />
-      <select 
-        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded p-1 text-center text-xs w-full outline-none text-zinc-900 dark:text-zinc-100"
-        value={set.rpe}
-        onChange={(e) => onUpdate(set.id, set.weight, set.reps, parseInt(e.target.value))}
-      >
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => (
-          <option key={val} value={val}>{val}</option>
-        ))}
-      </select>
-      <button 
-        onClick={() => onDuplicate(set)}
-        className="flex justify-center text-zinc-500 hover:text-emerald-400"
-      >
-        <Copy size={16} />
-      </button>
-      <button 
-        onClick={() => onDelete(set.id)}
-        className="flex justify-center text-zinc-500 hover:text-red-400"
-      >
-        <Trash2 size={16} />
-      </button>
+      
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button 
+          onClick={() => onRepeat(set)}
+          className="p-1 text-zinc-600 hover:text-emerald-400 transition-colors"
+          title="Repeat set"
+        >
+          <Repeat size={14} />
+        </button>
+        <button 
+          onClick={() => onDelete(set.id)}
+          className="p-1 text-zinc-600 hover:text-red-400 transition-colors"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
     </div>
   );
 };
 
-// --- Settings Modal Component ---
+// --- Settings Modal ---
 const SettingsModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -140,183 +153,207 @@ const SettingsModal: React.FC<{
   onUpdate: (key: string, value: any) => void;
 }> = ({ isOpen, onClose, settings, onUpdate }) => {
   if (!isOpen) return null;
-  
-  // Define accent class mapping to ensure tailwind picks them up
-  const accentTextClass = {
-    emerald: 'text-emerald-500',
-    blue: 'text-blue-500',
-    purple: 'text-purple-500',
-    amber: 'text-amber-500',
-    rose: 'text-rose-500'
-  }[settings.accent] || 'text-emerald-500';
-
-  const accentBgClass = {
-    emerald: 'accent-emerald-500',
-    blue: 'accent-blue-500',
-    purple: 'accent-purple-500',
-    amber: 'accent-amber-500',
-    rose: 'accent-rose-500'
-  }[settings.accent] || 'accent-emerald-500';
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[2rem] border border-zinc-200 dark:border-zinc-800 p-6 space-y-8 animate-in zoom-in-95 duration-200 shadow-2xl overflow-y-auto max-h-[90vh]">
+    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center">
+      <div className="bg-zinc-900 w-full max-w-md rounded-t-3xl p-5 pb-8 space-y-5 animate-in slide-in-from-bottom duration-300 shadow-2xl">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-black tracking-tight text-zinc-900 dark:text-zinc-100">SETTINGS</h2>
-          <button onClick={onClose} className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"><X size={20}/></button>
+          <h2 className="text-lg font-bold text-zinc-100">Settings</h2>
+          <button onClick={onClose} className="p-1.5 bg-zinc-800 rounded-full text-zinc-400 hover:text-zinc-100 transition-colors">
+            <X size={16}/>
+          </button>
         </div>
 
-        <div className="space-y-6">
-          <section className="space-y-3">
-            <h3 className="text-[10px] font-black text-zinc-400 tracking-widest uppercase">Preferences</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => onUpdate('theme', settings.theme === 'dark' ? 'light' : 'dark')}
-                className="flex items-center justify-between p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors shadow-sm"
-              >
-                <div className="flex items-center space-x-3">
-                  {settings.theme === 'dark' ? <Moon size={18} className="text-blue-400"/> : <Sun size={18} className="text-amber-500"/>}
-                  <span className="text-sm font-bold capitalize text-zinc-800 dark:text-zinc-200">{settings.theme}</span>
-                </div>
-              </button>
-              <button 
-                onClick={() => onUpdate('units', settings.units === 'kg' ? 'lb' : 'kg')}
-                className="flex items-center justify-between p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors shadow-sm"
-              >
-                <div className="flex items-center space-x-3 text-zinc-800 dark:text-zinc-200">
-                  <Scale size={18}/>
-                  <span className="text-sm font-bold uppercase">{settings.units}</span>
-                </div>
-              </button>
+        <div className="space-y-4">
+          {/* Theme */}
+          <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+            <div className="flex items-center gap-2">
+              {settings.theme === 'dark' ? <Moon size={16} className="text-blue-400"/> : <Sun size={16} className="text-amber-500"/>}
+              <span className="text-sm font-medium text-zinc-200">Theme</span>
             </div>
-          </section>
+            <button 
+              onClick={() => onUpdate('theme', settings.theme === 'dark' ? 'light' : 'dark')}
+              className="px-3 py-1 bg-zinc-700 rounded-lg text-xs font-semibold text-zinc-300 capitalize"
+            >
+              {settings.theme}
+            </button>
+          </div>
 
-          {/* Updated Rest Timer Section with Scroll Bar (Range Slider) */}
-          <section className="space-y-4">
-            <div className="flex justify-between items-end px-1">
-              <h3 className="text-[10px] font-black text-zinc-400 tracking-widest uppercase">Rest Timer</h3>
-              <div className="flex items-center space-x-2">
-                <Timer size={14} className={accentTextClass} />
-                <span className={`text-2xl font-black tabular-nums ${accentTextClass}`}>
-                  {formatShortDuration(settings.restDuration)}
-                </span>
-              </div>
+          {/* Units */}
+          <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+            <div className="flex items-center gap-2">
+              <Scale size={16} className="text-zinc-400"/>
+              <span className="text-sm font-medium text-zinc-200">Units</span>
             </div>
-            <div className="bg-zinc-100 dark:bg-zinc-800 p-6 rounded-3xl shadow-inner">
-              <input 
-                type="range"
-                min="15"
-                max="300"
-                step="15"
-                value={settings.restDuration}
-                onChange={(e) => onUpdate('restDuration', parseInt(e.target.value))}
-                className={`w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer ${accentBgClass} transition-all`}
-              />
-              <div className="flex justify-between mt-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                <span>0:15</span>
-                <span className="opacity-50">15s steps</span>
-                <span>5:00</span>
-              </div>
-            </div>
-          </section>
+            <button 
+              onClick={() => onUpdate('units', settings.units === 'kg' ? 'lb' : 'kg')}
+              className="px-3 py-1 bg-zinc-700 rounded-lg text-xs font-semibold text-zinc-300 uppercase"
+            >
+              {settings.units}
+            </button>
+          </div>
 
-          <section className="space-y-3">
-            <h3 className="text-[10px] font-black text-zinc-400 tracking-widest uppercase">Accent Color</h3>
-            <div className="flex flex-wrap gap-3 p-1">
+          {/* Rest Timer */}
+          <div className="p-3 bg-zinc-800/50 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Timer size={16} className="text-zinc-400"/>
+                <span className="text-sm font-medium text-zinc-200">Rest Timer</span>
+              </div>
+              <span className="text-sm font-bold text-emerald-400">{formatTime(settings.restDuration)}</span>
+            </div>
+            <input 
+              type="range"
+              min="15"
+              max="300"
+              step="15"
+              value={settings.restDuration}
+              onChange={(e) => onUpdate('restDuration', parseInt(e.target.value))}
+              className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            />
+            <div className="flex justify-between text-[10px] text-zinc-600">
+              <span>0:15</span>
+              <span>5:00</span>
+            </div>
+          </div>
+
+          {/* Accent Color */}
+          <div className="p-3 bg-zinc-800/50 rounded-xl space-y-3">
+            <span className="text-sm font-medium text-zinc-200">Accent Color</span>
+            <div className="flex gap-2">
               {ACCENT_COLORS.map(color => (
                 <button
                   key={color.value}
                   onClick={() => onUpdate('accent', color.value)}
                   style={{ backgroundColor: color.hex }}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${settings.accent === color.value ? 'ring-4 ring-offset-4 dark:ring-offset-zinc-900 ring-zinc-400 dark:ring-zinc-600 scale-110 shadow-lg' : 'opacity-80 hover:opacity-100 hover:scale-105'}`}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${settings.accent === color.value ? 'ring-2 ring-offset-2 ring-offset-zinc-800 ring-white scale-110' : 'opacity-60 hover:opacity-100'}`}
                 >
-                  {settings.accent === color.value && <CheckCircle2 size={20} className="text-white drop-shadow-md" />}
+                  {settings.accent === color.value && <Check size={14} className="text-white" />}
                 </button>
               ))}
             </div>
-          </section>
+          </div>
         </div>
 
-          <div className="pt-4 text-center border-t border-zinc-100 dark:border-zinc-800">
-          <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase opacity-50">VibeSet v1.0.0</p>
+        <div className="pt-2 text-center">
+          <p className="text-[10px] text-zinc-600 font-medium">VibeSet v1.0.0</p>
         </div>
       </div>
     </div>
   );
 };
 
-// --- Custom Exercise Modal ---
-const CustomExerciseModal: React.FC<{
+// --- Exercise Picker Modal ---
+const ExercisePicker: React.FC<{
   isOpen: boolean;
   onClose: () => void;
+  exercises: Exercise[];
   accent: string;
-  onAdd: (name: string, muscle: MuscleGroup) => void;
-}> = ({ isOpen, onClose, accent, onAdd }) => {
-  const [name, setName] = useState('');
-  const [muscle, setMuscle] = useState<MuscleGroup>('Full Body');
+  onSelect: (exercise: Exercise) => void;
+  onAddCustom: (name: string, muscle: MuscleGroup) => void;
+}> = ({ isOpen, onClose, exercises, accent, onSelect, onAddCustom }) => {
+  const [showCustom, setShowCustom] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customMuscle, setCustomMuscle] = useState<MuscleGroup>('Chest');
 
   if (!isOpen) return null;
 
+  // Group exercises by muscle
+  const grouped = useMemo(() => {
+    const groups: Record<string, Exercise[]> = {};
+    exercises.forEach(ex => {
+      if (!groups[ex.muscleGroup]) groups[ex.muscleGroup] = [];
+      groups[ex.muscleGroup].push(ex);
+    });
+    return groups;
+  }, [exercises]);
+
   return (
-    <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[2rem] p-6 space-y-6 animate-in zoom-in-95 duration-200 shadow-2xl border border-zinc-200 dark:border-zinc-800">
-        <h2 className="text-xl font-black text-zinc-900 dark:text-zinc-100 uppercase tracking-tight">NEW EXERCISE</h2>
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Exercise Name</label>
-            <input 
-              autoFocus
-              className="w-full bg-zinc-100 dark:bg-zinc-800 p-4 rounded-2xl outline-none text-zinc-900 dark:text-zinc-100 font-bold"
-              placeholder="e.g. Incline DB Press"
-              value={name}
-              onChange={e => setName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Target Muscle</label>
-            <select 
-              className="w-full bg-zinc-100 dark:bg-zinc-800 p-4 rounded-2xl outline-none text-zinc-900 dark:text-zinc-100 font-bold appearance-none"
-              value={muscle}
-              onChange={e => setMuscle(e.target.value as MuscleGroup)}
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center">
+      <div className="bg-zinc-900 w-full max-w-md rounded-t-3xl h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-2xl">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
+          <h3 className="font-bold text-zinc-100">Exercises</h3>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowCustom(!showCustom)}
+              className={`p-2 rounded-xl transition-all ${showCustom ? `bg-${accent}-500/20 text-${accent}-400` : 'bg-zinc-800 text-zinc-400'}`}
             >
-              {['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Full Body'].map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+              <PlusCircle size={18} />
+            </button>
+            <button onClick={onClose} className="p-2 bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-colors">
+              <X size={18}/>
+            </button>
           </div>
         </div>
-        <div className="flex space-x-3">
-          <button onClick={onClose} className="flex-1 p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold text-zinc-500">Cancel</button>
-          <button 
-            disabled={!name.trim()}
-            onClick={() => {
-              onAdd(name, muscle);
-              setName('');
-              onClose();
-            }}
-            className={`flex-1 p-4 bg-${accent}-500 text-white rounded-2xl font-black shadow-lg disabled:opacity-50 transition-all active:scale-95`}
-          >
-            CREATE
-          </button>
+
+        {showCustom && (
+          <div className="p-3 border-b border-zinc-800 bg-zinc-800/30">
+            <div className="flex gap-2">
+              <input 
+                className="flex-1 bg-zinc-800 px-3 py-2 rounded-xl text-sm text-zinc-100 outline-none placeholder-zinc-500"
+                placeholder="Exercise name..."
+                value={customName}
+                onChange={e => setCustomName(e.target.value)}
+              />
+              <select 
+                className="bg-zinc-800 px-3 py-2 rounded-xl text-sm text-zinc-300 outline-none"
+                value={customMuscle}
+                onChange={e => setCustomMuscle(e.target.value as MuscleGroup)}
+              >
+                {['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Full Body'].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <button 
+                disabled={!customName.trim()}
+                onClick={() => {
+                  onAddCustom(customName, customMuscle);
+                  setCustomName('');
+                  setShowCustom(false);
+                }}
+                className={`px-3 py-2 bg-${accent}-500 text-white rounded-xl text-sm font-semibold disabled:opacity-40`}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          {Object.entries(grouped).map(([muscle, exs]) => (
+            <div key={muscle}>
+              <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-2 mb-1.5">{muscle} ({exs.length})</h4>
+              <div className="space-y-0.5">
+                {exs.map(ex => (
+                  <button 
+                    key={ex.id}
+                    onClick={() => { onSelect(ex); onClose(); }}
+                    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition-all flex items-center justify-between group"
+                  >
+                    <span className="text-sm text-zinc-200 group-hover:text-zinc-100">{ex.name}</span>
+                    <Plus size={16} className="text-zinc-600 group-hover:text-emerald-400 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-// --- Main App Component ---
-
+// --- Main App ---
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'log' | 'history' | 'analytics' | 'templates'>('log');
+  type TabType = 'sets' | 'sessions' | 'body' | 'today';
+  const [activeTab, setActiveTab] = useState<TabType>('sets');
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>(EXERCISE_LIBRARY);
   const [currentSession, setCurrentSession] = useState<WorkoutSession | null>(null);
-  const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
-  const [exerciseModalMode, setExerciseModalMode] = useState<'log' | 'template'>('log');
-  const [tempSelectedExerciseIds, setTempSelectedExerciseIds] = useState<string[]>([]);
+  const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isCustomExerciseModalOpen, setIsCustomExerciseModalOpen] = useState(false);
+  const [selectedExerciseDetail, setSelectedExerciseDetail] = useState<string | null>(null);
 
   const [settings, setSettings] = useState({
     theme: 'dark' as 'light' | 'dark',
@@ -324,12 +361,10 @@ const App: React.FC = () => {
     accent: 'emerald',
     restDuration: 60
   });
-  
-  // Timer states
+
   const [exerciseTimer, setExerciseTimer] = useState<number | null>(null);
   const [workoutStopwatch, setWorkoutStopwatch] = useState<number>(0);
-  
-  // Refs
+
   const timerRef = useRef<any>(null);
   const stopwatchRef = useRef<any>(null);
 
@@ -337,37 +372,26 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedSessions = localStorage.getItem('vibeset_sessions');
     if (savedSessions) setSessions(JSON.parse(savedSessions));
-    
     const savedTemplates = localStorage.getItem('vibeset_templates');
     if (savedTemplates) setTemplates(JSON.parse(savedTemplates));
-
     const savedSettings = localStorage.getItem('vibeset_settings');
     if (savedSettings) setSettings(prev => ({ ...prev, ...JSON.parse(savedSettings) }));
-
     const savedCustomExercises = localStorage.getItem('vibeset_custom_exercises');
-    if (savedCustomExercises) {
-      setExercises([...EXERCISE_LIBRARY, ...JSON.parse(savedCustomExercises)]);
-    }
+    if (savedCustomExercises) setExercises([...EXERCISE_LIBRARY, ...JSON.parse(savedCustomExercises)]);
   }, []);
 
   useEffect(() => {
     localStorage.setItem('vibeset_sessions', JSON.stringify(sessions));
   }, [sessions]);
-
   useEffect(() => {
     localStorage.setItem('vibeset_templates', JSON.stringify(templates));
   }, [templates]);
-
   useEffect(() => {
     localStorage.setItem('vibeset_settings', JSON.stringify(settings));
-    if (settings.theme === 'light') {
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-    }
+    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
   }, [settings]);
 
-  // Exercise Timer logic
+  // Timer
   useEffect(() => {
     if (exerciseTimer !== null && exerciseTimer > 0) {
       timerRef.current = setTimeout(() => setExerciseTimer(exerciseTimer - 1), 1000);
@@ -377,22 +401,21 @@ const App: React.FC = () => {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [exerciseTimer]);
 
-  // Stopwatch logic
+  // Stopwatch
   useEffect(() => {
     if (currentSession && !currentSession.endTime) {
-      stopwatchRef.current = setInterval(() => {
-        setWorkoutStopwatch(prev => prev + 1);
-      }, 1000);
+      stopwatchRef.current = setInterval(() => setWorkoutStopwatch(prev => prev + 1), 1000);
     } else {
       if (stopwatchRef.current) clearInterval(stopwatchRef.current);
     }
     return () => { if (stopwatchRef.current) clearInterval(stopwatchRef.current); };
   }, [currentSession]);
 
+  // --- Actions ---
   const startWorkout = (template?: WorkoutTemplate) => {
     const newSession: WorkoutSession = {
       id: Date.now().toString(),
-      name: template ? template.name : 'Quick Workout',
+      name: template ? template.name : 'Workout',
       startTime: new Date().toISOString(),
       exercises: template ? template.exerciseIds.map(eid => ({
         exerciseId: eid,
@@ -401,7 +424,7 @@ const App: React.FC = () => {
     };
     setCurrentSession(newSession);
     setWorkoutStopwatch(0);
-    setActiveTab('log');
+    setActiveTab('sets');
   };
 
   const finishWorkout = () => {
@@ -424,51 +447,23 @@ const App: React.FC = () => {
       exerciseId: exercise.id,
       sets: [{ id: Math.random().toString(), weight: 0, reps: 0, rpe: 8, completedAt: new Date().toISOString() }]
     };
-    setCurrentSession({
-      ...currentSession,
-      exercises: [...currentSession.exercises, newLogged]
-    });
-    setIsExerciseModalOpen(false);
+    setCurrentSession({ ...currentSession, exercises: [...currentSession.exercises, newLogged] });
   };
 
   const addCustomExercise = (name: string, muscle: MuscleGroup) => {
-    const newEx: Exercise = {
-      id: `custom-${Date.now()}`,
-      name,
-      muscleGroup: muscle
-    };
+    const newEx: Exercise = { id: `custom-${Date.now()}`, name, muscleGroup: muscle };
     const updatedExercises = [...exercises, newEx];
     setExercises(updatedExercises);
-    
-    // Persist custom ones
     const customOnly = updatedExercises.filter(ex => ex.id.startsWith('custom-'));
     localStorage.setItem('vibeset_custom_exercises', JSON.stringify(customOnly));
   };
 
-  const createRoutineFromSelection = () => {
-    const name = prompt("Enter Routine Name:");
-    if (!name || tempSelectedExerciseIds.length === 0) return;
-    
-    const newTemplate: WorkoutTemplate = {
-      id: Date.now().toString(),
-      name,
-      exerciseIds: [...tempSelectedExerciseIds]
-    };
-    setTemplates([...templates, newTemplate]);
-    setTempSelectedExerciseIds([]);
-    setIsExerciseModalOpen(false);
-    setActiveTab('templates');
-  };
-
-  const triggerExerciseTimer = () => {
-    setExerciseTimer(settings.restDuration); 
-  };
+  const triggerTimer = () => setExerciseTimer(settings.restDuration);
 
   const addSetToExercise = (exerciseId: string, setDefaults?: Partial<WorkoutSet>) => {
     if (!currentSession) return;
-    const exerciseLogs = currentSession.exercises.find(e => e.exerciseId === exerciseId);
-    const lastSet = exerciseLogs?.sets.slice(-1)[0];
-    
+    const exerciseLog = currentSession.exercises.find(e => e.exerciseId === exerciseId);
+    const lastSet = exerciseLog?.sets.slice(-1)[0];
     const newSet: WorkoutSet = {
       id: Math.random().toString(),
       weight: setDefaults?.weight ?? lastSet?.weight ?? 0,
@@ -476,19 +471,17 @@ const App: React.FC = () => {
       rpe: setDefaults?.rpe ?? lastSet?.rpe ?? 8,
       completedAt: new Date().toISOString()
     };
-    
     setCurrentSession({
       ...currentSession,
       exercises: currentSession.exercises.map(e => 
         e.exerciseId === exerciseId ? { ...e, sets: [...e.sets, newSet] } : e
       )
     });
-    triggerExerciseTimer();
+    triggerTimer();
   };
 
   const updateSet = (exerciseId: string, setId: string, weight: number, reps: number, rpe: number) => {
     if (!currentSession) return;
-    
     const allMatchingSets = sessions.flatMap(s => s.exercises)
       .filter(ex => ex.exerciseId === exerciseId)
       .flatMap(ex => ex.sets);
@@ -504,7 +497,7 @@ const App: React.FC = () => {
         } : e
       )
     });
-    if (weight > 0 && reps > 0) triggerExerciseTimer();
+    if (weight > 0 && reps > 0) triggerTimer();
   };
 
   const deleteSet = (exerciseId: string, setId: string) => {
@@ -512,375 +505,525 @@ const App: React.FC = () => {
     setCurrentSession({
       ...currentSession,
       exercises: currentSession.exercises.map(e => 
-        e.exerciseId === exerciseId ? {
-          ...e,
-          sets: e.sets.filter(s => s.id !== setId)
-        } : e
+        e.exerciseId === exerciseId ? { ...e, sets: e.sets.filter(s => s.id !== setId) } : e
       )
     });
   };
 
-  const getGhostSession = (exerciseId: string) => {
+  const repeatSet = (exerciseId: string, set: WorkoutSet) => {
+    addSetToExercise(exerciseId, { weight: set.weight, reps: set.reps, rpe: set.rpe });
+  };
+
+  const getPreviousSets = (exerciseId: string) => {
     for (const session of sessions) {
-      const matchingEx = session.exercises.find(e => e.exerciseId === exerciseId);
-      if (matchingEx && matchingEx.sets.length > 0) {
-        return matchingEx.sets;
-      }
+      const ex = session.exercises.find(e => e.exerciseId === exerciseId);
+      if (ex && ex.sets.length > 0) return ex.sets;
     }
     return null;
   };
 
-  const getRecommendation = (sets: WorkoutSet[]) => {
-    if (sets.length === 0) return null;
-    const last = sets[sets.length - 1];
-    if (last.weight === 0 || last.reps === 0) return null;
+  const getComparison = (currentSets: WorkoutSet[], previousSets: WorkoutSet[] | null) => {
+    if (!previousSets || previousSets.length === 0 || currentSets.length === 0) return null;
     
-    if (last.rpe <= 7) return { text: `Up weight (+2.5${settings.units})`, color: `text-${settings.accent}-500` };
-    if (last.rpe >= 10) return { text: "Decrease load", color: "text-red-400" };
-    return { text: "Maintain intensity", color: "text-zinc-500" };
+    const currVolume = currentSets.reduce((acc, s) => acc + (s.weight * s.reps), 0);
+    const prevVolume = previousSets.reduce((acc, s) => acc + (s.weight * s.reps), 0);
+    const volumeDiff = prevVolume > 0 ? ((currVolume - prevVolume) / prevVolume * 100).toFixed(1) : '0';
+    
+    const setsDiff = currentSets.length - previousSets.length;
+    const repsDiff = currentSets.reduce((a, s) => a + s.reps, 0) - previousSets.reduce((a, s) => a + s.reps, 0);
+    
+    const currAvgWeight = currVolume / Math.max(currentSets.reduce((a, s) => a + s.reps, 0), 1);
+    const prevAvgWeight = prevVolume / Math.max(previousSets.reduce((a, s) => a + s.reps, 0), 1);
+    const lbRepDiff = prevAvgWeight > 0 ? ((currAvgWeight - prevAvgWeight) / prevAvgWeight * 100).toFixed(1) : '0';
+
+    return {
+      sets: { diff: setsDiff, pct: previousSets.length > 0 ? ((setsDiff / previousSets.length) * 100).toFixed(1) : '0' },
+      reps: { diff: repsDiff, pct: previousSets.reduce((a, s) => a + s.reps, 0) > 0 ? ((repsDiff / previousSets.reduce((a, s) => a + s.reps, 0)) * 100).toFixed(1) : '0' },
+      volume: { diff: currVolume - prevVolume, pct: volumeDiff },
+      lbRep: { diff: currAvgWeight - prevAvgWeight, pct: lbRepDiff }
+    };
   };
 
-  const chartData = useMemo(() => {
-    const dailyVolume: Record<string, number> = {};
-    sessions.forEach(s => {
-      const date = new Date(s.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const vol = s.exercises.reduce((acc, ex) => acc + ex.sets.reduce((setAcc, set) => setAcc + (set.weight * set.reps), 0), 0);
-      dailyVolume[date] = (dailyVolume[date] || 0) + vol;
-    });
-    return Object.entries(dailyVolume).map(([date, volume]) => ({ date, volume })).reverse();
-  }, [sessions]);
+  const createTemplate = () => {
+    if (!currentSession || currentSession.exercises.length === 0) return;
+    const name = prompt("Template name:");
+    if (!name) return;
+    setTemplates([...templates, { id: Date.now().toString(), name, exerciseIds: currentSession.exercises.map(e => e.exerciseId) }]);
+  };
 
-  // --- UI Render Sections ---
+  // --- Renders ---
 
-  const renderLog = () => {
+  // SETS TAB (main workout logging)
+  const renderSets = () => {
     if (!currentSession) {
       return (
-        <div className="flex flex-col items-center justify-center h-full p-8 space-y-6">
-          <div className={`p-6 bg-zinc-100 dark:bg-zinc-900 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-2xl transition-all duration-500`}>
-            <Dumbbell size={64} className={`text-${settings.accent}-500 animate-pulse`} />
+        <div className="flex flex-col items-center justify-center h-full p-6 space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-bold text-zinc-100">My Workouts</h2>
           </div>
-          <div className="text-center">
-            <h2 className="text-2xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100 uppercase italic">VIBE<span className={`text-${settings.accent}-500`}>SET</span></h2>
-            <p className="text-zinc-500 text-sm max-w-[240px] mt-1">Ready for your next PR? Start a session below.</p>
-          </div>
-          <div className="w-full max-w-[280px] space-y-3">
+          
+          <div className="w-full max-w-xs space-y-2">
             <button 
               onClick={() => startWorkout()}
-              className={`w-full bg-${settings.accent}-500 hover:opacity-90 text-white font-black py-4 rounded-xl flex items-center justify-center space-x-2 transition-transform active:scale-95 shadow-xl`}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
-              <Plus size={20} strokeWidth={3} />
-              <span className="uppercase tracking-widest">Start Quick Workout</span>
+              <Plus size={18} />
+              New Workout...
             </button>
-            <button 
-              onClick={() => setActiveTab('templates')}
-              className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-white font-bold py-4 rounded-xl flex items-center justify-center space-x-2 transition-transform active:scale-95"
-            >
-              <Layout size={20} />
-              <span className="uppercase tracking-widest">My Routines</span>
-            </button>
+            
+            {templates.length > 0 && (
+              <div className="pt-2 space-y-1">
+                <p className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider px-1">Templates</p>
+                {templates.map(t => (
+                  <button 
+                    key={t.id}
+                    onClick={() => startWorkout(t)}
+                    className="w-full bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 font-medium py-2.5 px-4 rounded-xl flex items-center justify-between transition-all text-sm"
+                  >
+                    <span>{t.name}</span>
+                    <ChevronRight size={16} className="text-zinc-500" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       );
     }
 
+    // Active workout
     return (
-      <div className="p-4 pb-32 space-y-6 overflow-y-auto h-full">
-        {/* Lockscreen Timers Display */}
-        <div className="bg-zinc-100/90 dark:bg-zinc-900/80 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 flex flex-col space-y-4 shadow-2xl transition-all sticky top-2 z-40">
-           <div className="flex justify-between items-center bg-white/50 dark:bg-black/40 p-5 rounded-2xl border border-white/40 dark:border-white/5 relative overflow-hidden group shadow-sm">
-              <div className="flex flex-col">
-                <span className={`text-[10px] font-black uppercase tracking-[0.2em] mb-1 ${exerciseTimer !== null ? `text-${settings.accent}-500` : 'text-zinc-400'}`}>REST TIMER</span>
-                <span className={`text-4xl font-black font-mono leading-none ${exerciseTimer !== null ? `text-${settings.accent}-500` : 'text-zinc-300'}`}>
-                  {exerciseTimer !== null ? `${exerciseTimer}s` : '--:--'}
-                </span>
-              </div>
-              <div className="flex space-x-2">
-                <button 
-                  onClick={() => triggerExerciseTimer()}
-                  className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-all shadow-sm"
-                  title="Reset Timer"
-                >
-                  <RotateCcw size={20} />
-                </button>
-                {exerciseTimer !== null && (
-                  <button 
-                    onClick={() => setExerciseTimer(null)}
-                    className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                    title="Stop Timer"
-                  >
-                    <X size={20} />
-                  </button>
-                )}
-              </div>
-              {/* Progress Bar for Timer */}
-              {exerciseTimer !== null && (
-                <div 
-                  className={`absolute bottom-0 left-0 h-1 bg-${settings.accent}-500 transition-all duration-1000 ease-linear`}
-                  style={{ width: `${(exerciseTimer / settings.restDuration) * 100}%` }}
-                />
-              )}
-           </div>
-
-           <div className="flex justify-between items-center px-2">
-             <div className="flex flex-col">
-               <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">SESSION STOPWATCH</span>
-               <span className="text-xl font-black font-mono leading-none text-zinc-900 dark:text-zinc-100 tabular-nums">{formatTime(workoutStopwatch)}</span>
-             </div>
-             <button 
-                onClick={finishWorkout}
-                className={`text-white font-black text-sm bg-${settings.accent}-500 px-6 py-3 rounded-xl shadow-lg active:scale-95 transition-all uppercase tracking-widest`}
-              >
-                FINISH
-              </button>
-           </div>
-        </div>
-
-        <div className="flex justify-between items-center mb-4 pt-2 px-1">
-          <div className="flex flex-col">
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-tighter">{currentSession.name}</span>
-            <span className="text-[10px] font-black text-zinc-400 uppercase">PROGRESSIVE OVERLOAD ENABLED</span>
+      <div className="flex flex-col h-full">
+        {/* Compact timer bar */}
+        <div className="flex items-center justify-between px-4 py-2 bg-zinc-900/80 border-b border-zinc-800">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col">
+              <span className="text-[9px] text-zinc-500 uppercase font-semibold">Rest</span>
+              <span className={`text-lg font-bold font-mono ${exerciseTimer !== null ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                {exerciseTimer !== null ? `${exerciseTimer}s` : '--'}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-zinc-500 uppercase font-semibold">Time</span>
+              <span className="text-lg font-bold font-mono text-zinc-300 tabular-nums">{formatTime(workoutStopwatch)}</span>
+            </div>
           </div>
           <button 
-              onClick={() => {
-                const name = prompt("Routine Name:", currentSession.name);
-                if(name) setTemplates([...templates, { id: Date.now().toString(), name, exerciseIds: currentSession.exercises.map(e => e.exerciseId) }]);
-              }}
-              className="p-3 bg-zinc-100 dark:bg-zinc-900 rounded-2xl text-zinc-500 hover:text-white transition-colors shadow-sm"
-            >
-              <Save size={20} />
+            onClick={finishWorkout}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all active:scale-95"
+          >
+            Finish
           </button>
         </div>
 
-        {currentSession.exercises.map((log) => {
-          const exercise = exercises.find(e => e.id === log.exerciseId);
-          const ghostSets = getGhostSession(log.exerciseId);
-          const recommendation = getRecommendation(log.sets);
-
-          return (
-            <div key={log.exerciseId} className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-xl transition-all mb-4">
-              <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-800/20">
-                <div className="flex-1">
-                  <h3 className="font-black text-lg leading-tight text-zinc-900 dark:text-zinc-100">{exercise?.name}</h3>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <span className="text-[10px] uppercase tracking-widest text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded font-black">{exercise?.muscleGroup}</span>
-                    {recommendation && (
-                      <span className={`text-[10px] font-black uppercase tracking-tighter ${recommendation.color}`}>{recommendation.text}</span>
-                    )}
-                  </div>
-                </div>
-                <button 
-                  onClick={() => addSetToExercise(log.exerciseId)}
-                  className={`p-3 bg-${settings.accent}-500 text-white rounded-2xl shadow-lg hover:opacity-90 active:scale-90 transition-all`}
-                >
-                  <Plus size={24} strokeWidth={3} />
-                </button>
-              </div>
-
-              {ghostSets && (
-                <div className="px-6 py-3 bg-zinc-50 dark:bg-zinc-950/50 border-b border-zinc-100 dark:border-zinc-800">
-                  <div className="flex items-center space-x-1 mb-1">
-                    <History size={10} className="text-zinc-500" />
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Last Performance</span>
-                  </div>
-                  <div className="flex space-x-4">
-                    {ghostSets.slice(0, 2).map((gs, i) => (
-                      <div key={gs.id} className="text-[10px] text-zinc-500 font-mono">
-                        S{i+1}: <span className="text-zinc-700 dark:text-zinc-200 font-bold">{gs.weight}{settings.units} x {gs.reps}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="p-5">
-                <div className="grid grid-cols-6 gap-2 px-3 mb-2 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">
-                  <div>SET</div>
-                  <div className="text-center">{settings.units.toUpperCase()}</div>
-                  <div className="text-center">REPS</div>
-                  <div className="text-center">RPE</div>
-                  <div className="text-center"></div>
-                  <div className="text-center"></div>
-                </div>
-                {log.sets.map((set, idx) => (
-                  <SetRow 
-                    key={set.id} 
-                    set={set} 
-                    index={idx} 
-                    units={settings.units}
-                    onDelete={(id) => deleteSet(log.exerciseId, id)}
-                    onUpdate={(id, w, r, rp) => updateSet(log.exerciseId, id, w, r, rp)}
-                    onDuplicate={(s) => addSetToExercise(log.exerciseId, { weight: s.weight, reps: s.reps, rpe: s.rpe })}
-                  />
-                ))}
-              </div>
+        {/* Exercise list */}
+        <div className="flex-1 overflow-y-auto pb-24">
+          {currentSession.exercises.length === 0 && (
+            <div className="text-center py-16 text-zinc-600">
+              <Dumbbell size={40} className="mx-auto mb-3 opacity-40" />
+              <p className="text-sm font-medium">No exercises yet</p>
+              <p className="text-xs text-zinc-700 mt-1">Tap + to add one</p>
             </div>
-          );
-        })}
+          )}
 
-        <button 
-          onClick={() => {
-            setExerciseModalMode('log');
-            setIsExerciseModalOpen(true);
-          }}
-          className="w-full border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2.5rem] p-12 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col items-center justify-center space-y-3 bg-zinc-50/50 dark:bg-zinc-900/10 group"
-        >
-          <PlusCircle size={40} className="transition-transform group-hover:scale-110" />
-          <span className="text-xs font-black uppercase tracking-[0.2em]">Add Next Exercise</span>
-        </button>
+          {currentSession.exercises.map((log) => {
+            const exercise = exercises.find(e => e.id === log.exerciseId);
+            const prevSets = getPreviousSets(log.exerciseId);
+            const comparison = getComparison(log.sets, prevSets);
+
+            return (
+              <div key={log.exerciseId} className="border-b border-zinc-800/50">
+                {/* Exercise header */}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <h3 className="font-semibold text-sm text-zinc-100">{exercise?.name}</h3>
+                    <span className="text-[10px] text-zinc-500">{exercise?.muscleGroup}</span>
+                  </div>
+                  <button 
+                    onClick={() => addSetToExercise(log.exerciseId)}
+                    className="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg hover:bg-emerald-500/20 transition-all"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+
+                {/* Comparison to previous */}
+                {comparison && (
+                  <div className="mx-4 mb-2 p-2 bg-zinc-800/30 rounded-lg">
+                    <p className="text-[9px] text-zinc-500 uppercase font-semibold mb-1.5">Compared to Previous</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${parseInt(comparison.sets.pct) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {parseInt(comparison.sets.pct) >= 0 ? '▲' : '▼'}{Math.abs(comparison.sets.diff)} ({Math.abs(parseFloat(comparison.sets.pct))}%)
+                        </div>
+                        <div className="text-[9px] text-zinc-600">Sets</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${parseInt(comparison.reps.pct) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {parseInt(comparison.reps.pct) >= 0 ? '▲' : '▼'}{Math.abs(comparison.reps.diff)} ({Math.abs(parseFloat(comparison.reps.pct))}%)
+                        </div>
+                        <div className="text-[9px] text-zinc-600">Reps</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${parseFloat(comparison.volume.pct) >= 0 ? 'text-cyan-400' : 'text-red-400'}`}>
+                          {parseFloat(comparison.volume.pct) >= 0 ? '▲' : '▼'}{Math.abs(comparison.volume.diff)} ({Math.abs(parseFloat(comparison.volume.pct))}%)
+                        </div>
+                        <div className="text-[9px] text-zinc-600">Volume</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${parseFloat(comparison.lbRep.pct) >= 0 ? 'text-orange-400' : 'text-red-400'}`}>
+                          {parseFloat(comparison.lbRep.pct) >= 0 ? '▲' : '▼'}{Math.abs(parseFloat(comparison.lbRep.pct))}%
+                        </div>
+                        <div className="text-[9px] text-zinc-600">{settings.units}/rep</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sets */}
+                <div className="px-2 pb-2">
+                  <div className="flex items-center gap-2 px-2 py-1 text-[9px] text-zinc-600 uppercase font-semibold">
+                    <span className="w-5">Set</span>
+                    <span className="flex-1">Weight × Reps</span>
+                  </div>
+                  {log.sets.map((set, idx) => (
+                    <SetRow 
+                      key={set.id} 
+                      set={set} 
+                      index={idx} 
+                      units={settings.units}
+                      prevSet={prevSets?.[idx]}
+                      onDelete={(id) => deleteSet(log.exerciseId, id)}
+                      onUpdate={(id, w, r, rp) => updateSet(log.exerciseId, id, w, r, rp)}
+                      onRepeat={(s) => repeatSet(log.exerciseId, s)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Add exercise button */}
+          <div className="p-4">
+            <button 
+              onClick={() => setIsExercisePickerOpen(true)}
+              className="w-full border border-dashed border-zinc-700 rounded-xl py-4 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-all flex items-center justify-center gap-2 text-sm"
+            >
+              <Plus size={16} />
+              Add Exercise
+            </button>
+          </div>
+
+          {/* Save as template */}
+          {currentSession.exercises.length > 0 && (
+            <div className="px-4 pb-4">
+              <button 
+                onClick={createTemplate}
+                className="w-full bg-zinc-800/50 hover:bg-zinc-800 text-zinc-400 text-xs font-medium py-2 rounded-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Save size={14} />
+                Save as Template
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
-  const renderHistory = () => (
-    <div className="p-4 space-y-4 pb-24 h-full overflow-y-auto">
-      <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-100 uppercase tracking-tight px-1 pt-4">Training Log</h2>
-      {sessions.length === 0 ? (
-        <div className="text-center py-32 text-zinc-500 italic opacity-50 flex flex-col items-center">
-          <History size={64} className="mb-6" />
-          <p className="font-black uppercase tracking-widest text-sm">Silence in the gym...</p>
-          <p className="text-xs mt-2">Your recorded sessions will appear here.</p>
-        </div>
-      ) : (
-        sessions.map(s => (
-          <div key={s.id} className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-[2rem] p-6 relative group hover:border-zinc-200 dark:hover:border-zinc-700 transition-all shadow-lg">
-            <button 
-              onClick={() => deleteSession(s.id)}
-              className="absolute top-6 right-6 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-zinc-50 dark:bg-zinc-800 rounded-xl"
-            >
-              <Trash2 size={20} />
-            </button>
-            <div className="flex items-center space-x-2 mb-3">
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] bg-zinc-100 dark:bg-zinc-800 px-3 py-1 rounded-full">{new Date(s.startTime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">{new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            <h3 className="font-black text-xl mb-4 tracking-tight text-zinc-900 dark:text-zinc-100 uppercase italic">{s.name || 'Strength Session'}</h3>
-            <div className="flex flex-wrap gap-2">
-              {s.exercises.map(ex => {
-                const info = exercises.find(e => e.id === ex.exerciseId);
-                return (
-                  <span key={ex.exerciseId} className="text-[10px] bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-100 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 px-3 py-1.5 rounded-xl font-black uppercase tracking-tighter">
-                    {info?.name} <span className={`text-${settings.accent}-500 ml-1`}>{ex.sets.length}S</span>
-                  </span>
-                );
-              })}
-            </div>
+  // SESSIONS TAB (history)
+  const renderSessions = () => (
+    <div className="h-full overflow-y-auto pb-20">
+      <div className="p-4">
+        <h2 className="text-lg font-bold text-zinc-100 mb-3">Session History</h2>
+        
+        {sessions.length === 0 ? (
+          <div className="text-center py-20 text-zinc-600">
+            <History size={40} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm font-medium">No sessions yet</p>
+            <p className="text-xs text-zinc-700 mt-1">Complete a workout to see it here</p>
           </div>
-        ))
-      )}
-    </div>
-  );
+        ) : (
+          <div className="space-y-2">
+            {sessions.map(s => {
+              const totalVolume = s.exercises.reduce((acc, ex) => 
+                acc + ex.sets.reduce((setAcc, set) => setAcc + (set.weight * set.reps), 0), 0
+              );
+              const totalSets = s.exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
+              const duration = s.endTime 
+                ? Math.floor((new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 1000)
+                : 0;
 
-  const renderAnalytics = () => (
-    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
-      <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-100 uppercase tracking-tight px-1 pt-4">Analytics</h2>
-      
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-[2.5rem] p-8 h-96 shadow-2xl">
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Tonnage Progression</h4>
-            <p className="text-[10px] font-bold text-zinc-400">Total volume moved per session</p>
-          </div>
-          <div className={`bg-${settings.accent}-500/10 text-${settings.accent}-500 text-[10px] px-3 py-1.5 rounded-full font-black tracking-widest`}>LOAD CHART</div>
-        </div>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={ACCENT_COLORS.find(c => c.value === settings.accent)?.hex} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={ACCENT_COLORS.find(c => c.value === settings.accent)?.hex} stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} opacity={0.1} />
-              <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} fontWeight="bold" />
-              <YAxis hide />
-              <Tooltip 
-                contentStyle={{ backgroundColor: settings.theme === 'dark' ? '#18181b' : '#ffffff', border: 'none', borderRadius: '20px', fontSize: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}
-                itemStyle={{ color: ACCENT_COLORS.find(c => c.value === settings.accent)?.hex, fontWeight: '900', textTransform: 'uppercase' }}
-                cursor={{ stroke: '#52525b', strokeWidth: 1, strokeDasharray: '4 4' }}
-              />
-              <Area type="monotone" dataKey="volume" stroke={ACCENT_COLORS.find(c => c.value === settings.accent)?.hex} fillOpacity={1} fill="url(#colorVol)" strokeWidth={5} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+              return (
+                <div key={s.id} className="bg-zinc-800/30 rounded-xl p-3 group">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="font-semibold text-sm text-zinc-100">{s.name || 'Workout'}</h3>
+                      <p className="text-[10px] text-zinc-500">
+                        {new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {duration > 0 && ` • ${formatDuration(duration)}`}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => deleteSession(s.id)}
+                      className="p-1.5 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  
+                  <div className="flex gap-3 text-[10px]">
+                    <span className="text-zinc-500">{s.exercises.length} exercises</span>
+                    <span className="text-zinc-500">{totalSets} sets</span>
+                    <span className="text-emerald-400 font-medium">{totalVolume.toLocaleString()} {settings.units}</span>
+                  </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-[2.5rem] p-8 shadow-xl">
-          <div className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em] mb-3">Sessions</div>
-          <div className={`text-5xl font-black text-${settings.accent}-500 tabular-nums italic`}>
-            {sessions.length}
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {s.exercises.slice(0, 4).map(ex => {
+                      const info = exercises.find(e => e.id === ex.exerciseId);
+                      return (
+                        <span key={ex.exerciseId} className="text-[9px] bg-zinc-700/50 text-zinc-400 px-2 py-0.5 rounded-md">
+                          {info?.name}
+                        </span>
+                      );
+                    })}
+                    {s.exercises.length > 4 && (
+                      <span className="text-[9px] text-zinc-600">+{s.exercises.length - 4} more</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-[2.5rem] p-8 shadow-xl">
-          <div className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em] mb-3">All-Time PBs</div>
-          <div className="text-5xl font-black text-blue-500 dark:text-blue-400 tabular-nums italic">
-            {sessions.reduce((acc, s) => acc + s.exercises.reduce((exAcc, ex) => exAcc + ex.sets.filter(st => st.isPB).length, 0), 0)}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
+
+  // BODY TAB (exercise library by muscle group)
+  const renderBody = () => {
+    const grouped = useMemo(() => {
+      const groups: Record<string, Exercise[]> = {};
+      exercises.forEach(ex => {
+        if (!groups[ex.muscleGroup]) groups[ex.muscleGroup] = [];
+        groups[ex.muscleGroup].push(ex);
+      });
+      return groups;
+    }, [exercises]);
+
+    // Count exercises per group
+    const groupCounts = useMemo(() => {
+      const counts: Record<string, number> = {};
+      exercises.forEach(ex => {
+        counts[ex.muscleGroup] = (counts[ex.muscleGroup] || 0) + 1;
+      });
+      return counts;
+    }, [exercises]);
+
+    return (
+      <div className="h-full overflow-y-auto pb-20">
+        <div className="p-4">
+          <h2 className="text-lg font-bold text-zinc-100 mb-1">My Exercises</h2>
+          <p className="text-xs text-zinc-500 mb-4">{exercises.length} total exercises</p>
+          
+          <div className="space-y-1">
+            {Object.entries(grouped).map(([muscle, exs]) => (
+              <button
+                key={muscle}
+                onClick={() => setSelectedExerciseDetail(selectedExerciseDetail === muscle ? null : muscle)}
+                className="w-full bg-zinc-800/30 hover:bg-zinc-800/50 rounded-xl p-3 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-200">{muscle}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500">{groupCounts[muscle]}</span>
+                    <ChevronDown size={14} className={`text-zinc-500 transition-transform ${selectedExerciseDetail === muscle ? 'rotate-180' : ''}`} />
+                  </div>
+                </div>
+                
+                {selectedExerciseDetail === muscle && (
+                  <div className="mt-2 pt-2 border-t border-zinc-700/50 space-y-1">
+                    {exs.map(ex => {
+                      // Find last performed
+                      const lastSession = sessions.find(s => s.exercises.some(e => e.exerciseId === ex.id));
+                      const lastPerformed = lastSession 
+                        ? new Date(lastSession.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                        : null;
+
+                      return (
+                        <div key={ex.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-zinc-700/30">
+                          <span className="text-sm text-zinc-300">{ex.name}</span>
+                          <span className="text-[10px] text-zinc-600">{lastPerformed || 'Never'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // TODAY TAB (calendar + daily summary)
+  const renderToday = () => {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    // Get workout days this month
+    const workoutDays = new Set(
+      sessions
+        .filter(s => {
+          const d = new Date(s.startTime);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        })
+        .map(s => new Date(s.startTime).getDate())
+    );
+
+    // Calendar
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+    const calendarDays = [];
+    for (let i = 0; i < firstDayOfMonth; i++) calendarDays.push(null);
+    for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
+
+    const monthName = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    return (
+      <div className="h-full overflow-y-auto pb-20">
+        <div className="p-4">
+          <h2 className="text-lg font-bold text-zinc-100 mb-4">{monthName}</h2>
+          
+          {/* Calendar grid */}
+          <div className="bg-zinc-800/30 rounded-xl p-3 mb-4">
+            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <span key={i} className="text-[10px] text-zinc-600 font-medium">{d}</span>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {calendarDays.map((day, i) => (
+                <div 
+                  key={i} 
+                  className={`w-9 h-9 flex items-center justify-center rounded-full text-xs font-medium ${
+                    day === null 
+                      ? '' 
+                      : day === today.getDate()
+                        ? 'bg-emerald-500 text-white'
+                        : workoutDays.has(day)
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'text-zinc-400 hover:bg-zinc-700/50'
+                  }`}
+                >
+                  {day}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Today's stats if there's a session */}
+          {sessions.filter(s => {
+            const d = new Date(s.startTime);
+            return d.getDate() === today.getDate() && 
+                   d.getMonth() === today.getMonth() && 
+                   d.getFullYear() === today.getFullYear();
+          }).map(s => {
+            const totalVolume = s.exercises.reduce((acc, ex) => 
+              acc + ex.sets.reduce((setAcc, set) => setAcc + (set.weight * set.reps), 0), 0
+            );
+            const totalSets = s.exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
+            const totalReps = s.exercises.reduce((acc, ex) => 
+              acc + ex.sets.reduce((setAcc, set) => setAcc + set.reps, 0), 0
+            );
+
+            return (
+              <div key={s.id} className="bg-zinc-800/30 rounded-xl p-4 space-y-3">
+                <h3 className="font-semibold text-sm text-zinc-100">{s.name}</h3>
+                
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-red-400">{totalSets}</div>
+                    <div className="text-[9px] text-zinc-500 uppercase">Sets</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-emerald-400">{totalReps}</div>
+                    <div className="text-[9px] text-zinc-500 uppercase">Reps</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-cyan-400">{totalVolume.toLocaleString()}</div>
+                    <div className="text-[9px] text-zinc-500 uppercase">Volume</div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  {s.exercises.map(ex => {
+                    const info = exercises.find(e => e.id === ex.exerciseId);
+                    return (
+                      <div key={ex.exerciseId} className="flex items-center justify-between py-1 px-2 rounded-lg bg-zinc-700/20">
+                        <span className="text-xs text-zinc-300">{info?.name}</span>
+                        <span className="text-[10px] text-zinc-500">{ex.sets.length} sets</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Monthly summary */}
+          <div className="mt-4 bg-zinc-800/30 rounded-xl p-4">
+            <h3 className="text-xs text-zinc-500 uppercase font-semibold mb-3">This Month</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-2xl font-bold text-zinc-100">{workoutDays.size}</div>
+                <div className="text-[10px] text-zinc-500">Workouts</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-zinc-100">
+                  {sessions
+                    .filter(s => {
+                      const d = new Date(s.startTime);
+                      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                    })
+                    .reduce((acc, s) => acc + s.exercises.reduce((a, e) => a + e.sets.length, 0), 0)
+                  }
+                </div>
+                <div className="text-[10px] text-zinc-500">Total Sets</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className={`flex flex-col h-screen ${settings.theme === 'dark' ? 'bg-zinc-950' : 'bg-zinc-50'} text-zinc-900 dark:text-zinc-50 max-w-md mx-auto relative shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden font-inter border-x border-zinc-100 dark:border-zinc-900 transition-colors duration-500`}>
+    <div className={`flex flex-col h-screen ${settings.theme === 'dark' ? 'bg-zinc-950' : 'bg-white'} text-zinc-100 max-w-md mx-auto relative overflow-hidden font-inter`}>
       {/* Header */}
-      <header className={`p-6 pt-12 flex justify-between items-center ${settings.theme === 'dark' ? 'bg-zinc-950/80' : 'bg-white/80'} backdrop-blur-xl z-20 sticky top-0 px-8 border-b border-transparent`}>
-        <div className="flex items-center space-x-3">
-          <div className={`w-11 h-11 bg-${settings.accent}-500 rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:rotate-12`}>
-            <Zap size={24} className="text-white" fill="currentColor" />
+      <header className={`px-4 py-3 flex items-center justify-between ${settings.theme === 'dark' ? 'bg-zinc-950' : 'bg-white'} border-b border-zinc-800/50 shrink-0`}>
+        <div className="flex items-center gap-2">
+          <div className={`w-7 h-7 bg-${settings.accent}-500 rounded-lg flex items-center justify-center`}>
+            <Zap size={14} className="text-white" fill="currentColor" />
           </div>
-          <h1 className="text-2xl font-black tracking-tighter italic text-zinc-900 dark:text-zinc-100 uppercase">VIBE<span className={`text-${settings.accent}-500`}>SET</span></h1>
+          <h1 className="text-base font-bold text-zinc-100 uppercase tracking-tight">Vibe<span className={`text-${settings.accent}-500`}>Set</span></h1>
         </div>
         <button 
           onClick={() => setIsSettingsOpen(true)}
-          className="p-3 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 bg-zinc-100 dark:bg-zinc-900 rounded-2xl transition-all shadow-md active:scale-90"
+          className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded-lg transition-all"
         >
-          <SettingsIcon size={24} />
+          <SettingsIcon size={16} />
         </button>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-hidden relative">
-        {activeTab === 'log' && renderLog()}
-        {activeTab === 'history' && renderHistory()}
-        {activeTab === 'analytics' && renderAnalytics()}
-        {activeTab === 'templates' && (
-           <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
-              <div className="flex justify-between items-center px-1 pt-6 mb-2">
-                <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-100 uppercase tracking-tight italic">My Routines</h2>
-                <button 
-                  onClick={() => {
-                    setExerciseModalMode('template');
-                    setTempSelectedExerciseIds([]);
-                    setIsExerciseModalOpen(true);
-                  }} 
-                  className={`p-3 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl text-${settings.accent}-500 shadow-xl transition-all active:scale-95`}
-                >
-                  <Plus size={24} strokeWidth={3} />
-                </button>
-              </div>
-              {templates.length === 0 && (
-                <div className="text-center py-32 text-zinc-500 opacity-40 flex flex-col items-center">
-                  <Layout size={80} strokeWidth={1} className="mb-6" />
-                  <p className="font-black uppercase tracking-[0.2em] text-sm">No systems detected</p>
-                  <p className="text-xs mt-2 font-bold italic">Standardize your training by building routines.</p>
-                </div>
-              )}
-              {templates.map(t => (
-                <div key={t.id} className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-[2.5rem] p-8 flex justify-between items-center hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-xl group">
-                   <div>
-                      <h3 className="font-black text-xl text-zinc-900 dark:text-zinc-100 mb-1 uppercase tracking-tight">{t.name}</h3>
-                      <p className="text-[10px] text-zinc-400 uppercase tracking-[0.2em] font-black">{t.exerciseIds.length} LOADED EXERCISES</p>
-                   </div>
-                   <div className="flex space-x-3">
-                      <button onClick={() => setTemplates(templates.filter(temp => temp.id !== t.id))} className="p-4 text-zinc-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={24}/></button>
-                      <button onClick={() => startWorkout(t)} className={`p-5 bg-${settings.accent}-500 text-white rounded-[1.5rem] shadow-2xl active:scale-95 transition-all`}><Play size={28} fill="currentColor"/></button>
-                   </div>
-                </div>
-              ))}
-           </div>
-        )}
+      {/* Main Content */}
+      <main className="flex-1 overflow-hidden">
+        {activeTab === 'sets' && renderSets()}
+        {activeTab === 'sessions' && renderSessions()}
+        {activeTab === 'body' && renderBody()}
+        {activeTab === 'today' && renderToday()}
       </main>
 
       {/* Modals */}
@@ -891,92 +1034,45 @@ const App: React.FC = () => {
         onUpdate={(k, v) => setSettings(prev => ({ ...prev, [k]: v }))}
       />
 
-      <CustomExerciseModal 
-        isOpen={isCustomExerciseModalOpen}
-        onClose={() => setIsCustomExerciseModalOpen(false)}
+      <ExercisePicker
+        isOpen={isExercisePickerOpen}
+        onClose={() => setIsExercisePickerOpen(false)}
+        exercises={exercises}
         accent={settings.accent}
-        onAdd={addCustomExercise}
+        onSelect={addExerciseToWorkout}
+        onAddCustom={addCustomExercise}
       />
 
-      {isExerciseModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-md h-[90vh] rounded-t-[4rem] sm:rounded-[4rem] border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-500 shadow-[0_-30px_100px_rgba(0,0,0,0.8)] relative">
-            <div className="p-10 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
-              <div className="flex flex-col">
-                <h3 className="font-black text-3xl tracking-tighter text-zinc-900 dark:text-zinc-100 uppercase italic">
-                  {exerciseModalMode === 'log' ? 'Protocol' : 'Builder'}
-                </h3>
-                {exerciseModalMode === 'template' && (
-                  <span className={`text-[10px] font-black text-${settings.accent}-500 uppercase tracking-[0.3em] mt-2`}>
-                    {tempSelectedExerciseIds.length} SYSTEM{tempSelectedExerciseIds.length !== 1 ? 'S' : ''} SELECTED
-                  </span>
-                )}
-              </div>
-              <div className="flex space-x-3">
-                 <button 
-                  onClick={() => setIsCustomExerciseModalOpen(true)}
-                  className={`p-4 bg-${settings.accent}-500/10 text-${settings.accent}-500 rounded-3xl hover:bg-${settings.accent}-500/20 transition-all shadow-sm`}
-                  title="Create New Exercise"
-                >
-                  <PlusCircle size={28} />
-                </button>
-                <button onClick={() => { setIsExerciseModalOpen(false); setTempSelectedExerciseIds([]); }} className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-3xl text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-all"><X size={28}/></button>
-              </div>
-            </div>
-            <div className="p-6 space-y-4 overflow-y-auto pb-48">
-              {exercises.map(ex => {
-                const isSelected = tempSelectedExerciseIds.includes(ex.id);
-                return (
-                  <button 
-                    key={ex.id}
-                    onClick={() => {
-                      if (exerciseModalMode === 'log') {
-                        addExerciseToWorkout(ex);
-                      } else {
-                        setTempSelectedExerciseIds(prev => 
-                          prev.includes(ex.id) ? prev.filter(id => id !== ex.id) : [...prev, ex.id]
-                        );
-                      }
-                    }}
-                    className={`w-full text-left p-8 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-[2.5rem] transition-all border-4 ${isSelected ? `border-${settings.accent}-500 bg-${settings.accent}-500/10` : 'border-transparent hover:border-zinc-200 dark:hover:border-zinc-700'} flex justify-between items-center group relative overflow-hidden shadow-sm`}
-                  >
-                    <div>
-                      <div className={`font-black text-xl text-zinc-900 dark:text-zinc-100 group-hover:text-${settings.accent}-500 transition-colors uppercase italic tracking-tight`}>{ex.name}</div>
-                      <div className="text-[10px] text-zinc-400 uppercase font-black tracking-[0.2em] mt-2">{ex.muscleGroup}</div>
-                    </div>
-                    {exerciseModalMode === 'log' ? (
-                      <Plus size={32} className="text-zinc-200 group-hover:text-emerald-500 transition-all group-hover:rotate-90" />
-                    ) : (
-                      <div className={`w-10 h-10 rounded-full border-4 flex items-center justify-center transition-all ${isSelected ? `bg-${settings.accent}-500 border-${settings.accent}-500 scale-110 shadow-lg` : 'border-zinc-200 dark:border-zinc-700'}`}>
-                        {isSelected && <Check size={24} className="text-white" strokeWidth={5} />}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {exerciseModalMode === 'template' && tempSelectedExerciseIds.length > 0 && (
-              <div className="absolute bottom-0 left-0 right-0 p-12 bg-gradient-to-t from-white dark:from-zinc-900 via-white dark:via-zinc-900 to-transparent pointer-events-none">
-                <button 
-                  onClick={createRoutineFromSelection}
-                  className={`w-full p-6 bg-${settings.accent}-500 text-white font-black rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] pointer-events-auto transform transition-transform active:scale-95 flex items-center justify-center space-x-4`}
-                >
-                  <Save size={28} />
-                  <span className="uppercase tracking-[0.3em] text-xl italic">INITIALIZE ROUTINE</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Bottom Navigation */}
-      <nav className={`fixed bottom-0 left-0 right-0 ${settings.theme === 'dark' ? 'bg-zinc-950/95' : 'bg-white/95'} backdrop-blur-2xl border-t border-zinc-100 dark:border-zinc-900 h-32 px-10 flex justify-between items-center z-30 max-w-md mx-auto shadow-[0_-20px_50px_rgba(0,0,0,0.1)] transition-colors duration-500 pb-4`}>
-        <NavItem icon={<Dumbbell size={32} strokeWidth={2.5} />} label="LOG" active={activeTab === 'log'} accent={settings.accent} onClick={() => setActiveTab('log')} />
-        <NavItem icon={<Layout size={32} strokeWidth={2.5} />} label="ROUTINES" active={activeTab === 'templates'} accent={settings.accent} onClick={() => setActiveTab('templates')} />
-        <NavItem icon={<History size={32} strokeWidth={2.5} />} label="HISTORY" active={activeTab === 'history'} accent={settings.accent} onClick={() => setActiveTab('history')} />
-        <NavItem icon={<BarChart2 size={32} strokeWidth={2.5} />} label="STATS" active={activeTab === 'analytics'} accent={settings.accent} onClick={() => setActiveTab('analytics')} />
+      <nav className={`${settings.theme === 'dark' ? 'bg-zinc-950/95' : 'bg-white/95'} backdrop-blur-xl border-t border-zinc-800/50 flex justify-around items-center py-1 shrink-0`}>
+        <NavItem 
+          icon={<List size={18} />} 
+          label="Sets" 
+          active={activeTab === 'sets'} 
+          accent={settings.accent} 
+          onClick={() => setActiveTab('sets')} 
+        />
+        <NavItem 
+          icon={<History size={18} />} 
+          label="Sessions" 
+          active={activeTab === 'sessions'} 
+          accent={settings.accent} 
+          onClick={() => setActiveTab('sessions')} 
+        />
+        <NavItem 
+          icon={<User size={18} />} 
+          label="Body" 
+          active={activeTab === 'body'} 
+          accent={settings.accent} 
+          onClick={() => setActiveTab('body')} 
+        />
+        <NavItem 
+          icon={<Calendar size={18} />} 
+          label="Today" 
+          active={activeTab === 'today'} 
+          accent={settings.accent} 
+          onClick={() => setActiveTab('today')} 
+        />
       </nav>
     </div>
   );
