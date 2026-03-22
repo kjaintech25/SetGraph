@@ -641,7 +641,6 @@ const App: React.FC = () => {
     setIsBuildingPlan(false);
     setIsExercisePickerOpen(false);
   };
-  };
 
   // --- Renders ---
 
