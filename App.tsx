@@ -251,7 +251,11 @@ const ExercisePicker: React.FC<{
   accent: string;
   onSelect: (exercise: Exercise) => void;
   onAddCustom: (name: string, muscle: MuscleGroup) => void;
-}> = ({ isOpen, onClose, exercises, accent, onSelect, onAddCustom }) => {
+  isBuildingPlan?: boolean;
+  planExerciseIds?: string[];
+  onTogglePlanExercise?: (exerciseId: string) => void;
+  onSavePlan?: () => void;
+}> = ({ isOpen, onClose, exercises, accent, onSelect, onAddCustom, isBuildingPlan, planExerciseIds, onTogglePlanExercise, onSavePlan }) => {
   const [showCustom, setShowCustom] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customMuscle, setCustomMuscle] = useState<MuscleGroup>('Chest');
@@ -272,7 +276,12 @@ const ExercisePicker: React.FC<{
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center">
       <div className="bg-zinc-900 w-full max-w-md rounded-t-3xl h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-2xl">
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
-          <h3 className="font-bold text-zinc-100">Exercises</h3>
+          <div>
+            <h3 className="font-bold text-zinc-100">{isBuildingPlan ? 'Build Plan' : 'Exercises'}</h3>
+            {isBuildingPlan && planExerciseIds && (
+              <span className="text-[10px] text-zinc-500">{planExerciseIds.length} selected</span>
+            )}
+          </div>
           <div className="flex gap-2">
             <button 
               onClick={() => setShowCustom(!showCustom)}
@@ -327,11 +336,24 @@ const ExercisePicker: React.FC<{
                 {exs.map(ex => (
                   <button 
                     key={ex.id}
-                    onClick={() => { onSelect(ex); onClose(); }}
+                    onClick={() => {
+                      if (isBuildingPlan) {
+                        onTogglePlanExercise?.(ex.id);
+                      } else {
+                        onSelect(ex);
+                        onClose();
+                      }
+                    }}
                     className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition-all flex items-center justify-between group"
                   >
                     <span className="text-sm text-zinc-200 group-hover:text-zinc-100">{ex.name}</span>
-                    <Plus size={16} className="text-zinc-600 group-hover:text-emerald-400 transition-colors" />
+                    {isBuildingPlan ? (
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${planExerciseIds?.includes(ex.id) ? `bg-${accent}-500 border-${accent}-500` : 'border-zinc-600'}`}>
+                        {planExerciseIds?.includes(ex.id) && <Check size={12} className="text-white" />}
+                      </div>
+                    ) : (
+                      <Plus size={16} className="text-zinc-600 group-hover:text-emerald-400 transition-colors" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -355,6 +377,8 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedExerciseDetail, setSelectedExerciseDetail] = useState<string | null>(null);
   const [showFullCalendar, setShowFullCalendar] = useState(false);
+  const [isBuildingPlan, setIsBuildingPlan] = useState(false);
+  const [planExerciseIds, setPlanExerciseIds] = useState<string[]>([]);
 
   const [settings, setSettings] = useState({
     theme: 'dark' as 'light' | 'dark',
@@ -496,7 +520,6 @@ const App: React.FC = () => {
         e.exerciseId === exerciseId ? { ...e, sets: [...e.sets, newSet] } : e
       )
     });
-    triggerTimer();
   };
 
   const updateSet = (exerciseId: string, setId: string, weight: number, reps: number, rpe: number) => {
@@ -516,7 +539,6 @@ const App: React.FC = () => {
         } : e
       )
     });
-    if (weight > 0 && reps > 0) triggerTimer();
   };
 
   const deleteSet = (exerciseId: string, setId: string) => {
@@ -570,6 +592,15 @@ const App: React.FC = () => {
     setTemplates([...templates, { id: Date.now().toString(), name, exerciseIds: currentSession.exercises.map(e => e.exerciseId) }]);
   };
 
+  const savePlanAsTemplate = () => {
+    if (planExerciseIds.length === 0) return;
+    const name = prompt("Plan name:");
+    if (!name) return;
+    setTemplates([...templates, { id: Date.now().toString(), name, exerciseIds: [...planExerciseIds] }]);
+    setPlanExerciseIds([]);
+    setIsBuildingPlan(false);
+  };
+
   // --- Renders ---
 
   // SETS TAB (main workout logging)
@@ -590,18 +621,37 @@ const App: React.FC = () => {
               New Workout...
             </button>
             
+            <button 
+              onClick={() => {
+                setPlanExerciseIds([]);
+                setIsBuildingPlan(true);
+                setIsExercisePickerOpen(true);
+              }}
+              className="w-full bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all text-sm"
+            >
+              <Layout size={18} />
+              New Custom Plan...
+            </button>
+            
             {templates.length > 0 && (
-              <div className="pt-2 space-y-1">
-                <p className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider px-1">Templates</p>
+              <div className="pt-4 space-y-1">
+                <p className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider px-1">My Plans</p>
                 {templates.map(t => (
-                  <button 
-                    key={t.id}
-                    onClick={() => startWorkout(t)}
-                    className="w-full bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 font-medium py-2.5 px-4 rounded-xl flex items-center justify-between transition-all text-sm"
-                  >
-                    <span>{t.name}</span>
-                    <ChevronRight size={16} className="text-zinc-500" />
-                  </button>
+                  <div key={t.id} className="flex items-center gap-2">
+                    <button 
+                      onClick={() => startWorkout(t)}
+                      className="flex-1 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 font-medium py-2.5 px-4 rounded-xl flex items-center justify-between transition-all text-sm"
+                    >
+                      <span>{t.name}</span>
+                      <span className="text-[10px] text-zinc-500">{t.exerciseIds.length} ex</span>
+                    </button>
+                    <button 
+                      onClick={() => setTemplates(templates.filter(temp => temp.id !== t.id))}
+                      className="p-2 text-zinc-600 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -618,9 +668,26 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="flex flex-col">
               <span className="text-[9px] text-zinc-500 uppercase font-semibold">Rest</span>
-              <span className={`text-lg font-bold font-mono ${exerciseTimer !== null ? 'text-emerald-400' : 'text-zinc-600'}`}>
-                {exerciseTimer !== null ? `${exerciseTimer}s` : '--'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-lg font-bold font-mono ${exerciseTimer !== null ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                  {exerciseTimer !== null ? `${exerciseTimer}s` : '--'}
+                </span>
+                {exerciseTimer === null ? (
+                  <button 
+                    onClick={triggerTimer}
+                    className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-semibold hover:bg-emerald-500/30 transition-all"
+                  >
+                    Start
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => setExerciseTimer(null)}
+                    className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-semibold hover:bg-red-500/30 transition-all"
+                  >
+                    Stop
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex flex-col">
               <span className="text-[9px] text-zinc-500 uppercase font-semibold">Time</span>
@@ -862,11 +929,24 @@ const App: React.FC = () => {
                 )}
               </button>
             ))}
-          </div>
         </div>
+
+        {/* Save Plan button when building */}
+        {isBuildingPlan && planExerciseIds && planExerciseIds.length > 0 && (
+          <div className="p-3 border-t border-zinc-800 shrink-0">
+            <button 
+              onClick={onSavePlan}
+              className={`w-full bg-${accent}-500 hover:bg-${accent}-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-all`}
+            >
+              <Save size={16} />
+              Save Plan ({planExerciseIds.length} exercises)
+            </button>
+          </div>
+        )}
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   // TODAY TAB (weekly view + expand to calendar)
   const renderToday = () => {
@@ -1148,11 +1228,23 @@ const App: React.FC = () => {
 
       <ExercisePicker
         isOpen={isExercisePickerOpen}
-        onClose={() => setIsExercisePickerOpen(false)}
+        onClose={() => {
+          setIsExercisePickerOpen(false);
+          setIsBuildingPlan(false);
+          setPlanExerciseIds([]);
+        }}
         exercises={exercises}
         accent={settings.accent}
         onSelect={addExerciseToWorkout}
         onAddCustom={addCustomExercise}
+        isBuildingPlan={isBuildingPlan}
+        planExerciseIds={planExerciseIds}
+        onTogglePlanExercise={(id) => {
+          setPlanExerciseIds(prev => 
+            prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]
+          );
+        }}
+        onSavePlan={savePlanAsTemplate}
       />
 
       {/* Bottom Navigation */}
